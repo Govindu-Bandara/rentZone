@@ -1,0 +1,22 @@
+{
+    "scripts":  {
+                    "test":  "echo \"Error: no test specified\" \u0026\u0026 exit 1"
+                },
+    "description":  "Lambda function for RentZone",
+    "license":  "ISC",
+    "version":  "1.0.0",
+    "author":  "",
+    "name":  "rentzone-house-update",
+    "main":  "index.js",
+    "dependencies":  {
+                         "@aws-sdk/client-apigatewaymanagementapi":  "^3.515.0",
+                         "jsonwebtoken":  "^9.0.2",
+                         "@aws-sdk/client-ssm":  "^3.515.0",
+                         "mongodb":  "^6.3.0",
+                         "bcryptjs":  "^2.4.3"
+                     },
+    "keywords":  [
+                     "lambda",
+                     "rentzone"
+                 ]
+}
