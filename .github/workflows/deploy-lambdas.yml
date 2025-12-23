@@ -1,92 +1,39 @@
-name: Deploy Lambda Functions from S3
+name: Deploy Lambdas
 
 on:
-  workflow_dispatch:
-    inputs:
-      deployment_type:
-        description: 'Deploy All or Single Function'
-        required: true
-        default: 'all'
-        type: choice
-        options:
-          - all
-          - single
-      lambda_name:
-        description: 'Lambda Function Name (for single deployment)'
-        required: false
-        type: string
+  push:
+    branches: [ main ]
 
 jobs:
   deploy:
-    name: Deploy Lambda Functions
     runs-on: ubuntu-latest
-    
+
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-      
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
-      
-      - name: Deploy Lambda Functions
-        run: |
-          cd backend/lambda-functions
-          
-          if [ "${{ github.event.inputs.deployment_type }}" = "single" ]; then
-            LAMBDAS=("${{ github.event.inputs.lambda_name }}")
-          else
-            LAMBDAS=(rentzone-*)
-          fi
-          
-          for LAMBDA_DIR in "${LAMBDAS[@]}"; do
-            if [ -d "$LAMBDA_DIR" ]; then
-              LAMBDA_NAME=$(basename "$LAMBDA_DIR")
-              echo "================================================"
-              echo "Deploying: $LAMBDA_NAME"
-              echo "================================================"
-              
-              cd "$LAMBDA_DIR"
-              
-              # Install dependencies
-              if [ -f "package.json" ]; then
-                npm install --production
-              fi
-              
-              # Create ZIP
-              zip -r "../${LAMBDA_NAME}.zip" . -x "*.git*" "*.md" "test/*"
-              
-              cd ..
-              
-              # Upload to S3
-              aws s3 cp "${LAMBDA_NAME}.zip" \
-                "s3://${{ secrets.S3_BUCKET_NAME }}/lambda-deployments/${LAMBDA_NAME}.zip"
-              
-              # Update Lambda
-              aws lambda update-function-code \
-                --function-name "$LAMBDA_NAME" \
-                --s3-bucket "${{ secrets.S3_BUCKET_NAME }}" \
-                --s3-key "lambda-deployments/${LAMBDA_NAME}.zip"
-              
-              # Wait for update
-              aws lambda wait function-updated --function-name "$LAMBDA_NAME"
-              
-              # Publish version
-              VERSION=$(aws lambda publish-version \
-                --function-name "$LAMBDA_NAME" \
-                --query 'Version' \
-                --output text)
-              
-              echo "✅ Deployed: $LAMBDA_NAME (Version: $VERSION)"
-              
-              rm "${LAMBDA_NAME}.zip"
-            fi
-          done
+    - uses: actions/checkout@v4
+
+    - uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ secrets.AWS_REGION }}
+
+    - name: Zip lambdas
+      run: |
+        cd backend/lambda-functions
+        for d in */ ; do
+          zip -r "../dist/${d%/}.zip" "$d"
+        done
+
+    - name: Upload to S3
+      run: |
+        aws s3 sync backend/dist s3://rentzone-lambda-artifacts
+
+    - name: Update Lambda functions
+      run: |
+        for zip in backend/dist/*.zip; do
+          name=$(basename "$zip" .zip)
+          aws lambda update-function-code \
+            --function-name "$name" \
+            --s3-bucket rentzone-lambda-artifacts \
+            --s3-key "$name.zip"
+        done
