@@ -1,0 +1,45 @@
+name: Deploy Lambdas
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ secrets.AWS_REGION }}
+
+    - name: Create dist directory
+      run: mkdir -p backend/dist
+
+    - name: Zip Lambda functions
+      run: |
+        cd backend/lambda-functions
+        for d in */ ; do
+          zip -r "../dist/${d%/}.zip" "$d"
+        done
+
+    - name: Upload ZIPs to S3
+      run: |
+        aws s3 sync backend/dist \
+          s3://${{ secrets.S3_BUCKET_NAME }}/lambda-deployments
+
+    - name: Update Lambda functions
+      run: |
+        for zip in backend/dist/*.zip; do
+          name=$(basename "$zip" .zip)
+          aws lambda update-function-code \
+            --function-name "$name" \
+            --s3-bucket ${{ secrets.S3_BUCKET_NAME }} \
+            --s3-key "lambda-deployments/$name.zip"
+        done
