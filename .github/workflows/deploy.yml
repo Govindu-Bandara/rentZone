@@ -33,6 +33,10 @@ jobs:
           chmod 600 ~/.ssh/deploy_key.pem
           ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
 
+      - name: Setup server directory
+        run: |
+          ssh -i ~/.ssh/deploy_key.pem ubuntu@${{ secrets.EC2_HOST }} "sudo mkdir -p /var/www/html && sudo chown -R ubuntu:ubuntu /var/www/html"
+
       - name: Upload build to EC2
         run: |
           scp -i ~/.ssh/deploy_key.pem -r rentzone-frontend/dist/* ubuntu@${{ secrets.EC2_HOST }}:/var/www/html/
