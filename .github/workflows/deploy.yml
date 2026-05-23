@@ -33,9 +33,16 @@ jobs:
           chmod 600 ~/.ssh/deploy_key.pem
           ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
 
-      - name: Setup server directory
+      - name: Setup server and install Nginx
         run: |
-          ssh -i ~/.ssh/deploy_key.pem ubuntu@${{ secrets.EC2_HOST }} "sudo mkdir -p /var/www/html && sudo chown -R ubuntu:ubuntu /var/www/html"
+          ssh -i ~/.ssh/deploy_key.pem ubuntu@${{ secrets.EC2_HOST }} "
+            sudo apt update -y &&
+            sudo apt install nginx -y &&
+            sudo mkdir -p /var/www/html &&
+            sudo chown -R ubuntu:ubuntu /var/www/html &&
+            sudo systemctl enable nginx &&
+            sudo systemctl start nginx
+          "
 
       - name: Upload build to EC2
         run: |
