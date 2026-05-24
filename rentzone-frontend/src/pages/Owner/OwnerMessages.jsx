@@ -7,6 +7,7 @@
  *  - Handles 'ws_poll' event → re-fetches active conversation messages periodically
  *  - Uses activeConvRef everywhere inside socket handler (no stale closures)
  *  - Deduplicates messages by _id
+ *  - Debug listener for diagnostics
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -39,7 +40,7 @@ export default function OwnerMessages() {
   /* ── Load all conversations ── */
   const loadConversations = useCallback(async () => {
     try {
-      const res  = await messageAPI.getConversations();
+      const res   = await messageAPI.getConversations();
       const convs = res.data?.conversations || [];
       setConversations(convs);
       return convs;
@@ -128,7 +129,12 @@ export default function OwnerMessages() {
           setConversations(prev =>
             prev.map(c =>
               (c.conversationId || c.id || c._id) === convId
-                ? { ...c, unreadCount: (c.unreadCount || 0) + 1, lastMessage: msg.message, lastMessageAt: msg.createdAt }
+                ? {
+                    ...c,
+                    unreadCount:   (c.unreadCount || 0) + 1,
+                    lastMessage:   msg.message,
+                    lastMessageAt: msg.createdAt,
+                  }
                 : c
             )
           );
@@ -154,7 +160,9 @@ export default function OwnerMessages() {
       case 'messageSent':
         setMessages(prev =>
           prev.map(m =>
-            m._id === data.tempId ? { ...m, _id: data.messageId, status: 'sent' } : m
+            m._id === data.tempId
+              ? { ...m, _id: data.messageId, status: 'sent' }
+              : m
           )
         );
         loadConversationsRef.current?.();
@@ -192,8 +200,13 @@ export default function OwnerMessages() {
       case 'userOnline':
         setOnlineUsers(prev => new Set([...prev, data.userId]));
         break;
+
       case 'userOffline':
-        setOnlineUsers(prev => { const s = new Set(prev); s.delete(data.userId); return s; });
+        setOnlineUsers(prev => {
+          const s = new Set(prev);
+          s.delete(data.userId);
+          return s;
+        });
         break;
 
       default: break;
@@ -202,12 +215,23 @@ export default function OwnerMessages() {
 
   /* ── Bootstrap ── */
   useEffect(() => {
+    // Debug listener — remove after confirming WS works
+    const debugListener = (data) => {
+      console.log('[OwnerMessages DEBUG] WS event:', data.action || data);
+    };
+
     connectSocket();
+    addSocketListener(debugListener);
     addSocketListener(handleSocketMessage);
+
     loadConversations().then(convs => {
       if (convs.length > 0) selectConversation(convs[0]);
     });
-    return () => removeSocketListener(handleSocketMessage);
+
+    return () => {
+      removeSocketListener(debugListener);
+      removeSocketListener(handleSocketMessage);
+    };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ── Send a message ── */
@@ -222,22 +246,28 @@ export default function OwnerMessages() {
 
     const tempId     = `temp_${Date.now()}`;
     const optimistic = {
-      _id:           tempId,
+      _id:            tempId,
       conversationId: activeConvId,
-      senderId:      user?._id || user?.id,
+      senderId:       user?._id || user?.id,
       receiverId,
-      message:       text,
-      messageType:   'text',
+      message:        text,
+      messageType:    'text',
       attachments,
-      createdAt:     new Date().toISOString(),
-      isRead:        false,
-      isDelivered:   false,
-      status:        'sending',
+      createdAt:      new Date().toISOString(),
+      isRead:         false,
+      isDelivered:    false,
+      status:         'sending',
     };
 
     setMessages(prev => [...prev, optimistic]);
 
-    const sent = sendWS('sendMessage', { receiverId, message: text, messageType: 'text', attachments, tempId });
+    const sent = sendWS('sendMessage', {
+      receiverId,
+      message:     text,
+      messageType: 'text',
+      attachments,
+      tempId,
+    });
 
     if (!sent) {
       try {
@@ -247,7 +277,9 @@ export default function OwnerMessages() {
           prev.map(m => m._id === tempId ? { ...m, _id: saved.messageId, status: 'sent' } : m)
         );
       } catch {
-        setMessages(prev => prev.map(m => m._id === tempId ? { ...m, status: 'failed' } : m));
+        setMessages(prev =>
+          prev.map(m => m._id === tempId ? { ...m, status: 'failed' } : m)
+        );
         toast.error('Failed to send message');
       }
     }
@@ -263,7 +295,9 @@ export default function OwnerMessages() {
     sendWS('typing', { conversationId: activeConvId, receiverId, isTyping });
   }, [activeConvId, conversations]);
 
-  const activeConv    = conversations.find(c => (c.conversationId || c.id || c._id) === activeConvId);
+  const activeConv    = conversations.find(c =>
+    (c.conversationId || c.id || c._id) === activeConvId
+  );
   const otherUser     = activeConv?.otherUser || null;
   const isOtherOnline = otherUser && onlineUsers.has(String(otherUser._id || otherUser.id));
   const isTyping      = Object.keys(typingUsers).length > 0;
@@ -316,31 +350,31 @@ export default function OwnerMessages() {
 
 const styles = {
   offlineBanner: {
-    background: '#FEF3C7',
-    color: '#92400E',
-    fontSize: 13,
-    fontWeight: 500,
-    padding: '8px 16px',
-    textAlign: 'center',
+    background:   '#FEF3C7',
+    color:        '#92400E',
+    fontSize:     13,
+    fontWeight:   500,
+    padding:      '8px 16px',
+    textAlign:    'center',
     borderBottom: '1px solid #FDE68A',
   },
   wrapper: {
-    display: 'grid',
+    display:             'grid',
     gridTemplateColumns: '320px 1fr',
-    height: 'calc(100vh - 80px)',
-    background: '#fff',
-    borderRadius: 16,
-    overflow: 'hidden',
-    border: '1px solid #E2E8F0',
-    boxShadow: '0 4px 24px rgba(0,0,0,0.06)',
+    height:              'calc(100vh - 80px)',
+    background:          '#fff',
+    borderRadius:        16,
+    overflow:            'hidden',
+    border:              '1px solid #E2E8F0',
+    boxShadow:           '0 4px 24px rgba(0,0,0,0.06)',
   },
   emptyInbox: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
+    display:        'flex',
+    flexDirection:  'column',
+    alignItems:     'center',
     justifyContent: 'center',
-    height: '100%',
-    gap: 12,
+    height:         '100%',
+    gap:            12,
   },
   emptyIcon:  { fontSize: 56, lineHeight: 1 },
   emptyTitle: { fontSize: 18, fontWeight: 700, color: '#475569' },

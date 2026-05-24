@@ -5,9 +5,10 @@
  * FIXES:
  *  - Handles 'ws_connected' event → reloads conversations + messages after reconnect
  *  - Handles 'ws_poll' event → re-fetches active conversation messages periodically
- *    when WebSocket is down (polling fallback from socket.js)
- *  - Uses activeConvRef everywhere inside socket handler (no stale closures)
- *  - Deduplicates messages by _id when appending
+ *  - location.state handled correctly without stale closure
+ *  - activeConvId set for pendingRecipient so ws_poll/ws_connected work
+ *  - location state cleared after reading to prevent re-trigger on refresh
+ *  - Debug listener added temporarily for diagnostics
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -24,22 +25,19 @@ export default function RenterMessages() {
   const { user } = useAuth();
   const location = useLocation();
 
-  const [conversations, setConversations]   = useState([]);
-  const [activeConvId, setActiveConvId]     = useState(null);
-  const [messages, setMessages]             = useState([]);
-  const [loadingConvs, setLoadingConvs]     = useState(true);
-  const [loadingMsgs, setLoadingMsgs]       = useState(false);
-  const [typingUsers, setTypingUsers]       = useState({});
-  const [onlineUsers, setOnlineUsers]       = useState(new Set());
+  const [conversations, setConversations]       = useState([]);
+  const [activeConvId, setActiveConvId]         = useState(null);
+  const [messages, setMessages]                 = useState([]);
+  const [loadingConvs, setLoadingConvs]         = useState(true);
+  const [loadingMsgs, setLoadingMsgs]           = useState(false);
+  const [typingUsers, setTypingUsers]           = useState({});
+  const [onlineUsers, setOnlineUsers]           = useState(new Set());
   const [pendingRecipient, setPendingRecipient] = useState(null);
-  const [wsConnected, setWsConnected]       = useState(false);
+  const [wsConnected, setWsConnected]           = useState(false);
 
-  // Refs so socket handler always reads current values
+  // Refs so socket handler always reads current values without stale closures
   const activeConvRef   = useRef(null);
   activeConvRef.current = activeConvId;
-
-  const messagesRef   = useRef([]);
-  messagesRef.current = messages;
 
   const loadConversationsRef = useRef(null);
   const loadMessagesRef      = useRef(null);
@@ -47,7 +45,7 @@ export default function RenterMessages() {
   /* ── Load all conversations ── */
   const loadConversations = useCallback(async () => {
     try {
-      const res  = await messageAPI.getConversations();
+      const res   = await messageAPI.getConversations();
       const convs = res.data?.conversations || [];
       setConversations(convs);
       return convs;
@@ -63,17 +61,15 @@ export default function RenterMessages() {
 
   /* ── Load messages for a conversation ── */
   const loadMessages = useCallback(async (convId, silent = false) => {
-    if (!convId) return;
+    if (!convId || convId.startsWith('pending_')) return;
     if (!silent) setLoadingMsgs(true);
     try {
-      const res = await messageAPI.getMessages(convId);
+      const res     = await messageAPI.getMessages(convId);
       const fetched = res.data?.messages || [];
       setMessages(fetched);
 
-      // Mark as read via WS (best-effort)
       sendWS('markAsRead', { conversationId: convId });
 
-      // Reset unread count locally
       setConversations(prev =>
         prev.map(c =>
           (c.conversationId || c.id || c._id) === convId
@@ -101,13 +97,15 @@ export default function RenterMessages() {
   const handleSocketMessage = useCallback((data) => {
     switch (data.action) {
 
-      /* ── Socket (re)connected → refresh everything ── */
+      /* Socket (re)connected → refresh everything */
       case 'ws_connected': {
         console.log('[RenterMessages] WS connected — refreshing data');
         setWsConnected(true);
         loadConversationsRef.current?.().then(() => {
           const convId = activeConvRef.current;
-          if (convId) loadMessagesRef.current?.(convId, true);
+          if (convId && !convId.startsWith('pending_')) {
+            loadMessagesRef.current?.(convId, true);
+          }
         });
         break;
       }
@@ -117,10 +115,10 @@ export default function RenterMessages() {
         break;
       }
 
-      /* ── Polling fallback: re-fetch active conv silently ── */
+      /* Polling fallback: re-fetch active conv silently */
       case 'ws_poll': {
         const convId = activeConvRef.current;
-        if (convId) {
+        if (convId && !convId.startsWith('pending_')) {
           loadMessagesRef.current?.(convId, true);
           loadConversationsRef.current?.();
         }
@@ -132,25 +130,27 @@ export default function RenterMessages() {
         const convId = msg.conversationId;
 
         if (activeConvRef.current === convId) {
-          // Append if not already present (dedup by _id)
           setMessages(prev => {
             if (prev.find(m => m._id === msg._id)) return prev;
             return [...prev, msg];
           });
-          // Acknowledge receipt
           sendWS('markAsRead', { conversationId: convId });
         } else {
-          // Bump unread badge on non-active conversation
           setConversations(prev =>
             prev.map(c =>
               (c.conversationId || c.id || c._id) === convId
-                ? { ...c, unreadCount: (c.unreadCount || 0) + 1, lastMessage: msg.message, lastMessageAt: msg.createdAt }
+                ? {
+                    ...c,
+                    unreadCount:    (c.unreadCount || 0) + 1,
+                    lastMessage:    msg.message,
+                    lastMessageAt:  msg.createdAt,
+                  }
                 : c
             )
           );
         }
 
-        // Bubble to top of list
+        // Bubble conversation to top of list
         setConversations(prev => {
           const exists = prev.find(c => (c.conversationId || c.id || c._id) === convId);
           if (!exists) {
@@ -176,7 +176,6 @@ export default function RenterMessages() {
               : m
           )
         );
-        // Reload conversation list so lastMessage updates
         loadConversationsRef.current?.();
         break;
       }
@@ -215,43 +214,66 @@ export default function RenterMessages() {
       case 'userOnline':
         setOnlineUsers(prev => new Set([...prev, data.userId]));
         break;
+
       case 'userOffline':
-        setOnlineUsers(prev => { const s = new Set(prev); s.delete(data.userId); return s; });
+        setOnlineUsers(prev => {
+          const s = new Set(prev);
+          s.delete(data.userId);
+          return s;
+        });
         break;
 
       default: break;
     }
-  }, []); // Empty deps — all state access via refs or functional updaters
+  }, []); // Empty deps — uses refs and functional setState, never stale
 
   /* ── Bootstrap ── */
   useEffect(() => {
+    // Debug listener — remove after confirming WS works
+    const debugListener = (data) => {
+      console.log('[RenterMessages DEBUG] WS event:', data.action || data);
+    };
+
     connectSocket();
+    addSocketListener(debugListener);
     addSocketListener(handleSocketMessage);
 
+    // Read location.state before it can change
+    const navState = location.state || {};
+
     loadConversations().then(convs => {
-      const state = location.state;
-      if (state?.recipientId) {
+      if (navState.recipientId) {
+        // Try to find existing conversation with this recipient
         const existing = convs.find(c => {
           const otherId = c.otherUser?._id || c.otherUser?.id;
-          return String(otherId) === String(state.recipientId);
+          return String(otherId) === String(navState.recipientId);
         });
 
         if (existing) {
           selectConversation(existing);
         } else {
+          // New conversation — set pending recipient and a placeholder activeConvId
+          // so ws_poll and ws_connected handlers know a conv is "active"
           setPendingRecipient({
-            _id:           state.recipientId,
-            name:          state.recipientName || 'Property Owner',
-            propertyId:    state.propertyId,
-            propertyTitle: state.propertyTitle,
+            _id:           navState.recipientId,
+            name:          navState.recipientName || 'Property Owner',
+            propertyId:    navState.propertyId,
+            propertyTitle: navState.propertyTitle,
           });
+          setActiveConvId(`pending_${navState.recipientId}`);
         }
       } else if (convs.length > 0) {
         selectConversation(convs[0]);
       }
     });
 
-    return () => removeSocketListener(handleSocketMessage);
+    // Clear navigation state so a page refresh doesn't re-trigger pending logic
+    window.history.replaceState({}, document.title);
+
+    return () => {
+      removeSocketListener(debugListener);
+      removeSocketListener(handleSocketMessage);
+    };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ── Send a message ── */
@@ -269,22 +291,28 @@ export default function RenterMessages() {
 
     const tempId     = `temp_${Date.now()}`;
     const optimistic = {
-      _id:           tempId,
+      _id:            tempId,
       conversationId: activeConvId,
-      senderId:      user?._id || user?.id,
+      senderId:       user?._id || user?.id,
       receiverId,
-      message:       text,
-      messageType:   'text',
+      message:        text,
+      messageType:    'text',
       attachments,
-      createdAt:     new Date().toISOString(),
-      isRead:        false,
-      isDelivered:   false,
-      status:        'sending',
+      createdAt:      new Date().toISOString(),
+      isRead:         false,
+      isDelivered:    false,
+      status:         'sending',
     };
 
     setMessages(prev => [...prev, optimistic]);
 
-    const sent = sendWS('sendMessage', { receiverId, message: text, messageType: 'text', attachments, tempId });
+    const sent = sendWS('sendMessage', {
+      receiverId,
+      message:     text,
+      messageType: 'text',
+      attachments,
+      tempId,
+    });
 
     if (!sent) {
       // WS explicitly disabled — REST fallback
@@ -294,39 +322,58 @@ export default function RenterMessages() {
         setMessages(prev =>
           prev.map(m => m._id === tempId ? { ...m, _id: saved.messageId, status: 'sent' } : m)
         );
-        if (!activeConvId) await loadConversations();
+        if (!activeConvId || activeConvId.startsWith('pending_')) {
+          await loadConversations();
+        }
       } catch {
-        setMessages(prev => prev.map(m => m._id === tempId ? { ...m, status: 'failed' } : m));
+        setMessages(prev =>
+          prev.map(m => m._id === tempId ? { ...m, status: 'failed' } : m)
+        );
         toast.error('Failed to send message');
       }
     }
 
+    // Clear pending recipient after first message is sent
     if (pendingRecipient) {
       setPendingRecipient(null);
-      setTimeout(() => loadConversations(), 1500);
+      setTimeout(() => {
+        loadConversations().then(convs => {
+          // Auto-select the newly created conversation
+          const newConv = convs.find(c => {
+            const otherId = c.otherUser?._id || c.otherUser?.id;
+            return String(otherId) === String(receiverId);
+          });
+          if (newConv) selectConversation(newConv);
+        });
+      }, 1500);
     }
-  }, [activeConvId, conversations, pendingRecipient, user, loadConversations]);
+  }, [activeConvId, conversations, pendingRecipient, user, loadConversations, selectConversation]);
 
   /* ── Typing indicator ── */
   const sendTyping = useCallback((isTyping) => {
     const activeConv = conversations.find(c =>
       (c.conversationId || c.id || c._id) === activeConvId
     );
-    const receiverId = activeConv?.otherUser?._id || activeConv?.otherUser?.id;
-    if (!receiverId || !activeConvId) return;
+    const receiverId = activeConv?.otherUser?._id
+      || activeConv?.otherUser?.id
+      || pendingRecipient?._id;
+    if (!receiverId || !activeConvId || activeConvId.startsWith('pending_')) return;
     sendWS('typing', { conversationId: activeConvId, receiverId, isTyping });
-  }, [activeConvId, conversations]);
+  }, [activeConvId, conversations, pendingRecipient]);
 
-  const activeConv    = conversations.find(c => (c.conversationId || c.id || c._id) === activeConvId);
-  const otherUser     = activeConv?.otherUser || (pendingRecipient
+  const activeConv = conversations.find(c =>
+    (c.conversationId || c.id || c._id) === activeConvId
+  );
+
+  const otherUser = activeConv?.otherUser || (pendingRecipient
     ? { _id: pendingRecipient._id, firstName: pendingRecipient.name, lastName: '' }
     : null);
+
   const isOtherOnline = otherUser && onlineUsers.has(String(otherUser._id || otherUser.id));
   const isTyping      = Object.keys(typingUsers).length > 0;
 
   return (
     <RenterLayout>
-      {/* Optional connection status banner */}
       {!wsConnected && (
         <div style={styles.offlineBanner}>
           ⚠️ Real-time connection unavailable — messages will refresh automatically
@@ -377,32 +424,32 @@ function EmptyInbox() {
 
 const styles = {
   offlineBanner: {
-    background: '#FEF3C7',
-    color: '#92400E',
-    fontSize: 13,
-    fontWeight: 500,
-    padding: '8px 16px',
-    textAlign: 'center',
+    background:   '#FEF3C7',
+    color:        '#92400E',
+    fontSize:     13,
+    fontWeight:   500,
+    padding:      '8px 16px',
+    textAlign:    'center',
     borderBottom: '1px solid #FDE68A',
   },
   wrapper: {
-    display: 'grid',
+    display:             'grid',
     gridTemplateColumns: '320px 1fr',
-    height: 'calc(100vh - 80px)',
-    background: '#fff',
-    borderRadius: 16,
-    overflow: 'hidden',
-    border: '1px solid #E2E8F0',
-    boxShadow: '0 4px 24px rgba(0,0,0,0.06)',
+    height:              'calc(100vh - 80px)',
+    background:          '#fff',
+    borderRadius:        16,
+    overflow:            'hidden',
+    border:              '1px solid #E2E8F0',
+    boxShadow:           '0 4px 24px rgba(0,0,0,0.06)',
   },
   emptyInbox: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
+    display:        'flex',
+    flexDirection:  'column',
+    alignItems:     'center',
     justifyContent: 'center',
-    height: '100%',
-    gap: 12,
-    color: '#94A3B8',
+    height:         '100%',
+    gap:            12,
+    color:          '#94A3B8',
   },
   emptyIcon:  { fontSize: 56, lineHeight: 1 },
   emptyTitle: { fontSize: 18, fontWeight: 700, color: '#475569' },
