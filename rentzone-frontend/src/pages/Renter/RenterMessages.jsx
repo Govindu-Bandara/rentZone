@@ -1,13 +1,13 @@
 /**
  * RenterMessages.jsx
  * Real-time messaging inbox for renters.
- * - Loads all conversations via REST on mount
- * - Opens WebSocket for live delivery / read / typing events
- * - Renter can only talk to owners (no renter↔renter)
- * - Conversation is auto-created when navigated from PropertyModal
  *
- * FIX 2: Use a stable ref-based listener so the socket handler always
- * has access to the latest state without needing to re-register.
+ * FIXES:
+ *  - Handles 'ws_connected' event → reloads conversations + messages after reconnect
+ *  - Handles 'ws_poll' event → re-fetches active conversation messages periodically
+ *    when WebSocket is down (polling fallback from socket.js)
+ *  - Uses activeConvRef everywhere inside socket handler (no stale closures)
+ *  - Deduplicates messages by _id when appending
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -24,26 +24,30 @@ export default function RenterMessages() {
   const { user } = useAuth();
   const location = useLocation();
 
-  const [conversations, setConversations] = useState([]);
-  const [activeConvId, setActiveConvId] = useState(null);
-  const [messages, setMessages] = useState([]);
-  const [loadingConvs, setLoadingConvs] = useState(true);
-  const [loadingMsgs, setLoadingMsgs] = useState(false);
-  const [typingUsers, setTypingUsers] = useState({});
-  const [onlineUsers, setOnlineUsers] = useState(new Set());
+  const [conversations, setConversations]   = useState([]);
+  const [activeConvId, setActiveConvId]     = useState(null);
+  const [messages, setMessages]             = useState([]);
+  const [loadingConvs, setLoadingConvs]     = useState(true);
+  const [loadingMsgs, setLoadingMsgs]       = useState(false);
+  const [typingUsers, setTypingUsers]       = useState({});
+  const [onlineUsers, setOnlineUsers]       = useState(new Set());
   const [pendingRecipient, setPendingRecipient] = useState(null);
+  const [wsConnected, setWsConnected]       = useState(false);
 
-  const activeConvRef = useRef(null);
+  // Refs so socket handler always reads current values
+  const activeConvRef   = useRef(null);
   activeConvRef.current = activeConvId;
 
-  // FIX 2: Keep a ref to the latest loadConversations so the stable
-  // socket listener can call it without re-registering.
+  const messagesRef   = useRef([]);
+  messagesRef.current = messages;
+
   const loadConversationsRef = useRef(null);
+  const loadMessagesRef      = useRef(null);
 
   /* ── Load all conversations ── */
   const loadConversations = useCallback(async () => {
     try {
-      const res = await messageAPI.getConversations();
+      const res  = await messageAPI.getConversations();
       const convs = res.data?.conversations || [];
       setConversations(convs);
       return convs;
@@ -55,21 +59,21 @@ export default function RenterMessages() {
     }
   }, []);
 
-  // Keep ref in sync
   loadConversationsRef.current = loadConversations;
 
   /* ── Load messages for a conversation ── */
-  const loadMessages = useCallback(async (convId) => {
+  const loadMessages = useCallback(async (convId, silent = false) => {
     if (!convId) return;
-    setLoadingMsgs(true);
+    if (!silent) setLoadingMsgs(true);
     try {
       const res = await messageAPI.getMessages(convId);
-      setMessages(res.data?.messages || []);
+      const fetched = res.data?.messages || [];
+      setMessages(fetched);
 
-      // Mark as read via WS
+      // Mark as read via WS (best-effort)
       sendWS('markAsRead', { conversationId: convId });
 
-      // Update local unread count
+      // Reset unread count locally
       setConversations(prev =>
         prev.map(c =>
           (c.conversationId || c.id || c._id) === convId
@@ -78,11 +82,13 @@ export default function RenterMessages() {
         )
       );
     } catch {
-      toast.error('Failed to load messages');
+      if (!silent) toast.error('Failed to load messages');
     } finally {
-      setLoadingMsgs(false);
+      if (!silent) setLoadingMsgs(false);
     }
   }, []);
+
+  loadMessagesRef.current = loadMessages;
 
   /* ── Select a conversation ── */
   const selectConversation = useCallback((conv) => {
@@ -91,26 +97,50 @@ export default function RenterMessages() {
     loadMessages(id);
   }, [loadMessages]);
 
-  /* ── Handle incoming WS messages ──
-   * FIX 2: This handler is defined once (empty deps) and uses refs to
-   * access current state, avoiding the stale-closure problem entirely.
-   */
+  /* ── WebSocket message handler ── */
   const handleSocketMessage = useCallback((data) => {
     switch (data.action) {
+
+      /* ── Socket (re)connected → refresh everything ── */
+      case 'ws_connected': {
+        console.log('[RenterMessages] WS connected — refreshing data');
+        setWsConnected(true);
+        loadConversationsRef.current?.().then(() => {
+          const convId = activeConvRef.current;
+          if (convId) loadMessagesRef.current?.(convId, true);
+        });
+        break;
+      }
+
+      case 'ws_disconnected': {
+        setWsConnected(false);
+        break;
+      }
+
+      /* ── Polling fallback: re-fetch active conv silently ── */
+      case 'ws_poll': {
+        const convId = activeConvRef.current;
+        if (convId) {
+          loadMessagesRef.current?.(convId, true);
+          loadConversationsRef.current?.();
+        }
+        break;
+      }
+
       case 'newMessage': {
-        const msg = data.message;
+        const msg    = data.message;
         const convId = msg.conversationId;
 
-        // If this conv is active, append message and mark read
         if (activeConvRef.current === convId) {
+          // Append if not already present (dedup by _id)
           setMessages(prev => {
-            // Avoid duplicates (optimistic vs server)
             if (prev.find(m => m._id === msg._id)) return prev;
             return [...prev, msg];
           });
+          // Acknowledge receipt
           sendWS('markAsRead', { conversationId: convId });
         } else {
-          // Increment unread badge
+          // Bump unread badge on non-active conversation
           setConversations(prev =>
             prev.map(c =>
               (c.conversationId || c.id || c._id) === convId
@@ -120,11 +150,10 @@ export default function RenterMessages() {
           );
         }
 
-        // Bubble up last message in list
+        // Bubble to top of list
         setConversations(prev => {
           const exists = prev.find(c => (c.conversationId || c.id || c._id) === convId);
           if (!exists) {
-            // New conversation appeared — reload list via ref (FIX 2)
             loadConversationsRef.current?.();
             return prev;
           }
@@ -140,7 +169,6 @@ export default function RenterMessages() {
       }
 
       case 'messageSent': {
-        // Confirm optimistic message by replacing tempId
         setMessages(prev =>
           prev.map(m =>
             m._id === data.tempId
@@ -148,6 +176,8 @@ export default function RenterMessages() {
               : m
           )
         );
+        // Reload conversation list so lastMessage updates
+        loadConversationsRef.current?.();
         break;
       }
 
@@ -191,7 +221,7 @@ export default function RenterMessages() {
 
       default: break;
     }
-  }, []); // FIX 2: Empty deps — uses refs and functional setState, never stale
+  }, []); // Empty deps — all state access via refs or functional updaters
 
   /* ── Bootstrap ── */
   useEffect(() => {
@@ -201,7 +231,6 @@ export default function RenterMessages() {
     loadConversations().then(convs => {
       const state = location.state;
       if (state?.recipientId) {
-        // Auto-open or create conversation from PropertyModal
         const existing = convs.find(c => {
           const otherId = c.otherUser?._id || c.otherUser?.id;
           return String(otherId) === String(state.recipientId);
@@ -210,11 +239,10 @@ export default function RenterMessages() {
         if (existing) {
           selectConversation(existing);
         } else {
-          // Store pending recipient to start new conversation
           setPendingRecipient({
-            _id: state.recipientId,
-            name: state.recipientName || 'Property Owner',
-            propertyId: state.propertyId,
+            _id:           state.recipientId,
+            name:          state.recipientName || 'Property Owner',
+            propertyId:    state.propertyId,
             propertyTitle: state.propertyTitle,
           });
         }
@@ -233,56 +261,46 @@ export default function RenterMessages() {
     const activeConv = conversations.find(c =>
       (c.conversationId || c.id || c._id) === activeConvId
     );
-    const receiverId = activeConv?.otherUser?._id || activeConv?.otherUser?.id
+    const receiverId = activeConv?.otherUser?._id
+      || activeConv?.otherUser?.id
       || pendingRecipient?._id;
 
     if (!receiverId) return;
 
-    const tempId = `temp_${Date.now()}`;
+    const tempId     = `temp_${Date.now()}`;
     const optimistic = {
-      _id: tempId,
+      _id:           tempId,
       conversationId: activeConvId,
-      senderId: user?._id || user?.id,
+      senderId:      user?._id || user?.id,
       receiverId,
-      message: text,
-      messageType: 'text',
+      message:       text,
+      messageType:   'text',
       attachments,
-      createdAt: new Date().toISOString(),
-      isRead: false,
-      isDelivered: false,
-      status: 'sending',
+      createdAt:     new Date().toISOString(),
+      isRead:        false,
+      isDelivered:   false,
+      status:        'sending',
     };
 
     setMessages(prev => [...prev, optimistic]);
 
-    // FIX 1 effect: sendWS now returns true even when queuing, so we only
-    // fall back to REST if WS is explicitly disabled (WS_ENABLED = false).
-    const sent = sendWS('sendMessage', {
-      receiverId,
-      message: text,
-      messageType: 'text',
-      attachments,
-      tempId,
-    });
+    const sent = sendWS('sendMessage', { receiverId, message: text, messageType: 'text', attachments, tempId });
 
     if (!sent) {
       // WS explicitly disabled — REST fallback
       try {
-        const res = await messageAPI.sendMessage({ receiverId, message: text, attachments, tempId });
+        const res   = await messageAPI.sendMessage({ receiverId, message: text, attachments, tempId });
         const saved = res.data;
         setMessages(prev =>
           prev.map(m => m._id === tempId ? { ...m, _id: saved.messageId, status: 'sent' } : m)
         );
-        if (!activeConvId) {
-          await loadConversations();
-        }
+        if (!activeConvId) await loadConversations();
       } catch {
         setMessages(prev => prev.map(m => m._id === tempId ? { ...m, status: 'failed' } : m));
         toast.error('Failed to send message');
       }
     }
 
-    // Clear pending recipient after first message
     if (pendingRecipient) {
       setPendingRecipient(null);
       setTimeout(() => loadConversations(), 1500);
@@ -299,19 +317,22 @@ export default function RenterMessages() {
     sendWS('typing', { conversationId: activeConvId, receiverId, isTyping });
   }, [activeConvId, conversations]);
 
-  const activeConv = conversations.find(c =>
-    (c.conversationId || c.id || c._id) === activeConvId
-  );
-
-  const otherUser = activeConv?.otherUser || (pendingRecipient
+  const activeConv    = conversations.find(c => (c.conversationId || c.id || c._id) === activeConvId);
+  const otherUser     = activeConv?.otherUser || (pendingRecipient
     ? { _id: pendingRecipient._id, firstName: pendingRecipient.name, lastName: '' }
     : null);
-
   const isOtherOnline = otherUser && onlineUsers.has(String(otherUser._id || otherUser.id));
-  const isTyping = Object.keys(typingUsers).length > 0;
+  const isTyping      = Object.keys(typingUsers).length > 0;
 
   return (
     <RenterLayout>
+      {/* Optional connection status banner */}
+      {!wsConnected && (
+        <div style={styles.offlineBanner}>
+          ⚠️ Real-time connection unavailable — messages will refresh automatically
+        </div>
+      )}
+
       <div className="messages-shell renter-messages-shell" style={styles.wrapper}>
         <ConversationList
           conversations={conversations}
@@ -334,9 +355,7 @@ export default function RenterMessages() {
           conversationId={activeConvId}
           propertyTitle={pendingRecipient?.propertyTitle || activeConv?.propertyTitle}
           emptyState={
-            !activeConvId && !pendingRecipient
-              ? <EmptyInbox />
-              : null
+            !activeConvId && !pendingRecipient ? <EmptyInbox /> : null
           }
         />
       </div>
@@ -357,6 +376,15 @@ function EmptyInbox() {
 }
 
 const styles = {
+  offlineBanner: {
+    background: '#FEF3C7',
+    color: '#92400E',
+    fontSize: 13,
+    fontWeight: 500,
+    padding: '8px 16px',
+    textAlign: 'center',
+    borderBottom: '1px solid #FDE68A',
+  },
   wrapper: {
     display: 'grid',
     gridTemplateColumns: '320px 1fr',
@@ -376,7 +404,7 @@ const styles = {
     gap: 12,
     color: '#94A3B8',
   },
-  emptyIcon: { fontSize: 56, lineHeight: 1 },
+  emptyIcon:  { fontSize: 56, lineHeight: 1 },
   emptyTitle: { fontSize: 18, fontWeight: 700, color: '#475569' },
-  emptyDesc: { fontSize: 14, color: '#94A3B8', textAlign: 'center', maxWidth: 280 },
+  emptyDesc:  { fontSize: 14, color: '#94A3B8', textAlign: 'center', maxWidth: 280 },
 };

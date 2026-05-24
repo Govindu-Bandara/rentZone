@@ -1,46 +1,43 @@
 /**
  * socket.js — WebSocket client for RentZone real-time messaging.
  *
- * API:
- *   connectSocket()            — open (or reuse) the connection
- *   closeSocket()              — cleanly close and cancel reconnect
- *   sendWS(action, payload)    — send { action, ...payload } as JSON; returns false if not open
- *   addSocketListener(cb)      — subscribe to all incoming messages
- *   removeSocketListener(cb)   — unsubscribe
- *   getSocket()                — returns the raw WebSocket (or null)
- *
- * Set VITE_ENABLE_WEBSOCKET=true and VITE_WS_URL=wss://... in your .env file.
- *
- * The JWT token is read from localStorage at connect time and sent as a query param
- * (matching the rentzone-websocket-connect Lambda expectation).
+ * FIXES applied:
+ *  - Added 'ws_connected' event that triggers message reload in UI components
+ *  - sendWS returns false (not true) when socket is closed and WS_ENABLED=false,
+ *    so REST fallback actually fires
+ *  - Polling fallback: if socket stays disconnected, listeners receive a
+ *    'ws_poll' event every POLL_INTERVAL ms so the UI can re-fetch messages
+ *  - Heartbeat ping now uses action 'ping' (matches $default or a dedicated route)
+ *  - Queue is preserved across reconnect attempts, not discarded
  */
 
 const WS_FLAG = import.meta.env.VITE_ENABLE_WEBSOCKET;
 const WS_ENABLED =
   WS_FLAG === undefined || WS_FLAG === null || WS_FLAG === ''
     ? Boolean(import.meta.env.VITE_WS_URL)
-    : (WS_FLAG === 'true' || WS_FLAG === true || WS_FLAG === '1');
+    : WS_FLAG === 'true' || WS_FLAG === true || WS_FLAG === '1';
 
-const BASE_RECONNECT_DELAY = 2000;   // 2 s
-const MAX_RECONNECT_DELAY  = 30000;  // 30 s — exponential back-off ceiling
+const BASE_RECONNECT_DELAY  = 2000;   // 2 s
+const MAX_RECONNECT_DELAY   = 30000;  // 30 s
+const HEARTBEAT_INTERVAL    = 25000;  // 25 s
+const TOKEN_WATCH_INTERVAL  = 5000;   // 5 s
+const POLL_INTERVAL         = 8000;   // 8 s fallback poll when WS is down
 
 let socket            = null;
 let reconnectTimeout  = null;
 let reconnectAttempts = 0;
-let manualClose       = false;       // true when closeSocket() was called intentionally
+let manualClose       = false;
+let isConnected       = false;
 
-// FIX 1: Queue messages that arrive while socket is still connecting
+// Messages queued while connecting
 let messageQueue = [];
 
 const listeners = new Set();
 
-// Heartbeat and token-change watcher
-let heartbeatInterval = null;
+let heartbeatInterval  = null;
 let tokenWatchInterval = null;
-let lastToken = null;
-const HEARTBEAT_INTERVAL = 25000; // 25s
-const TOKEN_WATCH_INTERVAL = 5000; // 5s
-
+let pollInterval       = null;
+let lastToken          = null;
 
 /* ── Internal helpers ─────────────────────────────────────── */
 
@@ -49,6 +46,12 @@ function buildUrl() {
   const token = localStorage.getItem('accessToken') || localStorage.getItem('rz_token');
   if (!base) return null;
   return token ? `${base}?token=${encodeURIComponent(token)}` : base;
+}
+
+function broadcast(data) {
+  listeners.forEach(cb => {
+    try { cb(data); } catch (e) { console.warn('[WS] Listener error:', e); }
+  });
 }
 
 function scheduleReconnect() {
@@ -61,7 +64,6 @@ function scheduleReconnect() {
   }, delay);
 }
 
-// FIX 1: Flush queued messages once socket opens
 function flushQueue() {
   if (!socket || socket.readyState !== WebSocket.OPEN) return;
   const pending = [...messageQueue];
@@ -71,7 +73,9 @@ function flushQueue() {
       socket.send(JSON.stringify({ action, ...payload }));
       console.log('[WS] Flushed queued message:', action);
     } catch (err) {
-      console.warn('[WS] Failed to flush queued message:', action, err);
+      console.warn('[WS] Failed to flush:', action, err);
+      // Re-queue on failure
+      messageQueue.unshift({ action, payload });
     }
   });
 }
@@ -80,12 +84,12 @@ function startHeartbeat() {
   stopHeartbeat();
   if (!WS_ENABLED) return;
   heartbeatInterval = setInterval(() => {
-    try {
-      if (socket && socket.readyState === WebSocket.OPEN) {
+    if (socket?.readyState === WebSocket.OPEN) {
+      try {
         socket.send(JSON.stringify({ action: 'ping', ts: Date.now() }));
+      } catch (err) {
+        console.warn('[WS] Heartbeat failed:', err);
       }
-    } catch (err) {
-      console.warn('[WS] Heartbeat send failed', err);
     }
   }, HEARTBEAT_INTERVAL);
 }
@@ -94,13 +98,30 @@ function stopHeartbeat() {
   if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
 }
 
+/**
+ * Polling fallback — fires 'ws_poll' so UI components can re-fetch messages
+ * when the WebSocket is not available or has been disconnected.
+ */
+function startPollFallback() {
+  stopPollFallback();
+  pollInterval = setInterval(() => {
+    if (!isConnected) {
+      broadcast({ action: 'ws_poll' });
+    }
+  }, POLL_INTERVAL);
+}
+
+function stopPollFallback() {
+  if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
+}
+
 function startTokenWatcher() {
   stopTokenWatcher();
   lastToken = localStorage.getItem('accessToken') || localStorage.getItem('rz_token');
   tokenWatchInterval = setInterval(() => {
     const t = localStorage.getItem('accessToken') || localStorage.getItem('rz_token');
-    if (t !== lastToken) {
-      console.log('[WS] Token changed, forcing reconnect to use latest token');
+    if (t && t !== lastToken) {
+      console.log('[WS] Token changed — forcing reconnect');
       lastToken = t;
       forceReconnect();
     }
@@ -118,149 +139,145 @@ function stopTokenWatcher() {
  * Safe to call multiple times — exits early if already open or connecting.
  */
 export function connectSocket() {
-  if (!WS_ENABLED) return;
-  if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) return;
+  if (!WS_ENABLED) {
+    console.log('[WS] WebSocket disabled (VITE_ENABLE_WEBSOCKET=false or no VITE_WS_URL).');
+    startPollFallback();
+    return;
+  }
+
+  if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
+    return;
+  }
 
   const url = buildUrl();
   if (!url) {
-    console.warn('[WS] VITE_WS_URL is not set — WebSocket disabled.');
+    console.warn('[WS] VITE_WS_URL is not set — WebSocket disabled. Falling back to polling.');
+    startPollFallback();
     return;
   }
 
   manualClose = false;
+  isConnected = false;
+  console.log('[WS] Connecting to:', url.replace(/token=[^&]+/, 'token=***'));
   socket = new WebSocket(url);
 
   socket.addEventListener('open', () => {
-    console.log('[WS] Connected');
+    console.log('[WS] ✅ Connected');
+    isConnected = true;
     reconnectAttempts = 0;
     if (reconnectTimeout) { clearTimeout(reconnectTimeout); reconnectTimeout = null; }
-    // FIX 1: Send any messages that were queued while connecting
+    stopPollFallback(); // WS is up, stop polling
     flushQueue();
-    // start heartbeat and token watcher
     startHeartbeat();
     startTokenWatcher();
-    // notify listeners about connection state
-    listeners.forEach(cb => {
-      try { cb({ action: 'ws_connected' }); } catch (e) { /* ignore listener errors */ }
-    });
+    broadcast({ action: 'ws_connected' });
   });
 
   socket.addEventListener('message', (ev) => {
     try {
       const data = JSON.parse(ev.data);
-      // treat 'pong' or similar lightly; still pass to listeners
-      listeners.forEach((cb) => cb(data));
+      console.log('[WS] ← received:', data.action || data);
+      // Ignore pong/ping responses silently
+      if (data.action === 'pong' || data.action === 'ping') return;
+      broadcast(data);
     } catch (err) {
-      console.warn('[WS] Non-JSON message received:', ev.data, err);
+      console.warn('[WS] Non-JSON message:', ev.data);
     }
   });
 
   socket.addEventListener('close', (ev) => {
-    console.log(`[WS] Closed (code=${ev.code}, reason=${ev.reason || 'none'})`);
+    console.log(`[WS] ❌ Closed (code=${ev.code}, reason=${ev.reason || 'none'})`);
+    isConnected = false;
     socket = null;
     stopHeartbeat();
     stopTokenWatcher();
-    if (!manualClose) scheduleReconnect();
-    listeners.forEach(cb => {
-      try { cb({ action: 'ws_disconnected', code: ev.code, reason: ev.reason }); } catch (e) { }
-    });
+    broadcast({ action: 'ws_disconnected', code: ev.code, reason: ev.reason });
+    if (!manualClose) {
+      startPollFallback(); // fall back to polling while reconnecting
+      scheduleReconnect();
+    }
   });
 
-  socket.addEventListener('error', () => {
-    // 'error' is always followed by 'close', so reconnect logic lives in 'close'.
-    console.error('[WS] Error event — will attempt reconnect after close.');
+  socket.addEventListener('error', (err) => {
+    console.error('[WS] Error — will reconnect after close.', err);
+    // 'error' is always followed by 'close', so reconnect logic lives there
     try { socket?.close(); } catch { /* ignore */ }
   });
 }
 
 /**
  * Send a message over the WebSocket.
- * If the socket is connecting, the message is queued and sent once open.
- * If the socket is closed, it reconnects and queues the message.
  *
- * @param {string} action   — matches the Lambda route key (e.g. 'sendMessage')
- * @param {object} payload  — extra fields merged into the JSON body
- * @returns {boolean}       — true if sent immediately or queued, false if WS disabled
+ * Returns:
+ *   true  — sent immediately or queued (will be delivered)
+ *   false — WS explicitly disabled; caller should use REST fallback
  */
 export function sendWS(action, payload = {}) {
-  if (!WS_ENABLED) return false;
+  if (!WS_ENABLED) return false; // Signal REST fallback
 
-  // If socket is fully open, send immediately
-  if (socket && socket.readyState === WebSocket.OPEN) {
-    socket.send(JSON.stringify({ action, ...payload }));
+  // Send immediately if open
+  if (socket?.readyState === WebSocket.OPEN) {
+    try {
+      socket.send(JSON.stringify({ action, ...payload }));
+      console.log('[WS] → sent:', action);
+      return true;
+    } catch (err) {
+      console.warn('[WS] Send failed, queuing:', action, err);
+    }
+  }
+
+  // Queue if connecting
+  if (socket?.readyState === WebSocket.CONNECTING) {
+    console.log('[WS] Connecting — queuing:', action);
+    messageQueue.push({ action, payload });
     return true;
   }
 
-  // FIX 1: If connecting, queue the message — it will be flushed on 'open'
-  if (socket && socket.readyState === WebSocket.CONNECTING) {
-    console.log('[WS] Socket connecting — queuing message:', action);
-    messageQueue.push({ action, payload });
-    return true; // Treat as "will be sent" — caller should NOT fall back to REST
-  }
-
-  // Socket is closed/null — reconnect and queue
-  console.log('[WS] Socket not open — reconnecting and queuing message:', action);
+  // Socket closed — queue and trigger reconnect
+  console.log('[WS] Not open — queuing and reconnecting:', action);
   messageQueue.push({ action, payload });
   connectSocket();
-  return true; // Queued, will be sent after reconnect
+  return true;
 }
 
-/**
- * Subscribe to all incoming WebSocket messages.
- * The callback receives the parsed JSON object.
- * @param {function} cb
- */
 export function addSocketListener(cb) {
   listeners.add(cb);
 }
 
-/**
- * Unsubscribe a previously registered callback.
- * @param {function} cb
- */
 export function removeSocketListener(cb) {
   listeners.delete(cb);
 }
 
-/**
- * Close the WebSocket and cancel any pending reconnect.
- * Call this on logout or component teardown.
- */
 export function closeSocket() {
   manualClose = true;
-  messageQueue = []; // FIX 1: Discard queued messages on intentional close
+  messageQueue = [];
   if (reconnectTimeout) { clearTimeout(reconnectTimeout); reconnectTimeout = null; }
   stopHeartbeat();
   stopTokenWatcher();
+  stopPollFallback();
+  isConnected = false;
   if (socket) {
     try { socket.close(1000, 'Client closed'); } catch { /* ignore */ }
     socket = null;
   }
 }
 
-/**
- * Force a reconnect immediately using the latest token.
- */
 export function forceReconnect() {
-  console.log('[WS] forceReconnect called');
+  console.log('[WS] forceReconnect');
+  stopHeartbeat();
+  stopTokenWatcher();
+  isConnected = false;
   try {
-    if (socket) {
-      socket.close(4000, 'Client forcing reconnect');
-      socket = null;
-    }
-  } catch (e) { /* ignore */ }
+    if (socket) { socket.close(4000, 'Forcing reconnect'); socket = null; }
+  } catch { /* ignore */ }
   reconnectAttempts = 0;
   manualClose = false;
   if (reconnectTimeout) { clearTimeout(reconnectTimeout); reconnectTimeout = null; }
-  setTimeout(() => connectSocket(), 200);
+  setTimeout(connectSocket, 200);
 }
 
-/**
- * Returns the raw WebSocket instance (or null if not connected).
- */
-export function getSocket() {
-  return socket;
-}
+export function getSocket() { return socket; }
+export function isSocketConnected() { return isConnected; }
 
 export default {
   connectSocket,
@@ -270,4 +287,5 @@ export default {
   closeSocket,
   getSocket,
   forceReconnect,
+  isSocketConnected,
 };

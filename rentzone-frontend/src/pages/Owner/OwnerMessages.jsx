@@ -1,12 +1,12 @@
 /**
  * OwnerMessages.jsx
  * Real-time messaging inbox for property owners.
- * - Owners can ONLY respond — they cannot initiate conversations
- * - Conversations are sorted by latest message
- * - Read receipts, delivery, and typing indicators supported
  *
- * FIX 2: Use a stable ref-based listener so the socket handler always
- * has access to the latest state without needing to re-register.
+ * FIXES:
+ *  - Handles 'ws_connected' event → reloads conversations + messages after reconnect
+ *  - Handles 'ws_poll' event → re-fetches active conversation messages periodically
+ *  - Uses activeConvRef everywhere inside socket handler (no stale closures)
+ *  - Deduplicates messages by _id
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -22,23 +22,24 @@ export default function OwnerMessages() {
   const { user } = useAuth();
 
   const [conversations, setConversations] = useState([]);
-  const [activeConvId, setActiveConvId] = useState(null);
-  const [messages, setMessages] = useState([]);
-  const [loadingConvs, setLoadingConvs] = useState(true);
-  const [loadingMsgs, setLoadingMsgs] = useState(false);
-  const [typingUsers, setTypingUsers] = useState({});
-  const [onlineUsers, setOnlineUsers] = useState(new Set());
+  const [activeConvId, setActiveConvId]   = useState(null);
+  const [messages, setMessages]           = useState([]);
+  const [loadingConvs, setLoadingConvs]   = useState(true);
+  const [loadingMsgs, setLoadingMsgs]     = useState(false);
+  const [typingUsers, setTypingUsers]     = useState({});
+  const [onlineUsers, setOnlineUsers]     = useState(new Set());
+  const [wsConnected, setWsConnected]     = useState(false);
 
-  const activeConvRef = useRef(null);
+  const activeConvRef   = useRef(null);
   activeConvRef.current = activeConvId;
 
-  // FIX 2: Keep a ref to the latest loadConversations so the stable
-  // socket listener can call it without re-registering.
   const loadConversationsRef = useRef(null);
+  const loadMessagesRef      = useRef(null);
 
+  /* ── Load all conversations ── */
   const loadConversations = useCallback(async () => {
     try {
-      const res = await messageAPI.getConversations();
+      const res  = await messageAPI.getConversations();
       const convs = res.data?.conversations || [];
       setConversations(convs);
       return convs;
@@ -50,15 +51,16 @@ export default function OwnerMessages() {
     }
   }, []);
 
-  // Keep ref in sync
   loadConversationsRef.current = loadConversations;
 
-  const loadMessages = useCallback(async (convId) => {
+  /* ── Load messages ── */
+  const loadMessages = useCallback(async (convId, silent = false) => {
     if (!convId) return;
-    setLoadingMsgs(true);
+    if (!silent) setLoadingMsgs(true);
     try {
-      const res = await messageAPI.getMessages(convId);
-      setMessages(res.data?.messages || []);
+      const res     = await messageAPI.getMessages(convId);
+      const fetched = res.data?.messages || [];
+      setMessages(fetched);
       sendWS('markAsRead', { conversationId: convId });
       setConversations(prev =>
         prev.map(c =>
@@ -68,25 +70,52 @@ export default function OwnerMessages() {
         )
       );
     } catch {
-      toast.error('Failed to load messages');
+      if (!silent) toast.error('Failed to load messages');
     } finally {
-      setLoadingMsgs(false);
+      if (!silent) setLoadingMsgs(false);
     }
   }, []);
 
+  loadMessagesRef.current = loadMessages;
+
+  /* ── Select conversation ── */
   const selectConversation = useCallback((conv) => {
     const id = conv.conversationId || conv.id || conv._id;
     setActiveConvId(id);
     loadMessages(id);
   }, [loadMessages]);
 
-  /* ── Handle incoming WS messages ──
-   * FIX 2: Empty deps — uses refs and functional setState, never stale.
-   */
+  /* ── WebSocket handler ── */
   const handleSocketMessage = useCallback((data) => {
     switch (data.action) {
+
+      case 'ws_connected': {
+        console.log('[OwnerMessages] WS connected — refreshing data');
+        setWsConnected(true);
+        loadConversationsRef.current?.().then(() => {
+          const convId = activeConvRef.current;
+          if (convId) loadMessagesRef.current?.(convId, true);
+        });
+        break;
+      }
+
+      case 'ws_disconnected': {
+        setWsConnected(false);
+        break;
+      }
+
+      /* Polling fallback */
+      case 'ws_poll': {
+        const convId = activeConvRef.current;
+        if (convId) {
+          loadMessagesRef.current?.(convId, true);
+          loadConversationsRef.current?.();
+        }
+        break;
+      }
+
       case 'newMessage': {
-        const msg = data.message;
+        const msg    = data.message;
         const convId = msg.conversationId;
 
         if (activeConvRef.current === convId) {
@@ -108,7 +137,6 @@ export default function OwnerMessages() {
         setConversations(prev => {
           const exists = prev.find(c => (c.conversationId || c.id || c._id) === convId);
           if (!exists) {
-            // Use ref so we don't need loadConversations in deps (FIX 2)
             loadConversationsRef.current?.();
             return prev;
           }
@@ -129,6 +157,7 @@ export default function OwnerMessages() {
             m._id === data.tempId ? { ...m, _id: data.messageId, status: 'sent' } : m
           )
         );
+        loadConversationsRef.current?.();
         break;
 
       case 'messageDelivered':
@@ -169,8 +198,9 @@ export default function OwnerMessages() {
 
       default: break;
     }
-  }, []); // FIX 2: Empty deps — uses refs and functional setState, never stale
+  }, []); // Empty deps — uses refs and functional setState
 
+  /* ── Bootstrap ── */
   useEffect(() => {
     connectSocket();
     addSocketListener(handleSocketMessage);
@@ -180,6 +210,7 @@ export default function OwnerMessages() {
     return () => removeSocketListener(handleSocketMessage);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /* ── Send a message ── */
   const sendMessage = useCallback(async (text, attachments = []) => {
     if (!text.trim() && attachments.length === 0) return;
 
@@ -189,36 +220,28 @@ export default function OwnerMessages() {
     const receiverId = activeConv?.otherUser?._id || activeConv?.otherUser?.id;
     if (!receiverId) return;
 
-    const tempId = `temp_${Date.now()}`;
+    const tempId     = `temp_${Date.now()}`;
     const optimistic = {
-      _id: tempId,
+      _id:           tempId,
       conversationId: activeConvId,
-      senderId: user?._id || user?.id,
+      senderId:      user?._id || user?.id,
       receiverId,
-      message: text,
-      messageType: 'text',
+      message:       text,
+      messageType:   'text',
       attachments,
-      createdAt: new Date().toISOString(),
-      isRead: false,
-      isDelivered: false,
-      status: 'sending',
+      createdAt:     new Date().toISOString(),
+      isRead:        false,
+      isDelivered:   false,
+      status:        'sending',
     };
 
     setMessages(prev => [...prev, optimistic]);
 
-    // FIX 1 effect: sendWS returns true when queuing too
-    const sent = sendWS('sendMessage', {
-      receiverId,
-      message: text,
-      messageType: 'text',
-      attachments,
-      tempId,
-    });
+    const sent = sendWS('sendMessage', { receiverId, message: text, messageType: 'text', attachments, tempId });
 
     if (!sent) {
-      // WS explicitly disabled — REST fallback
       try {
-        const res = await messageAPI.sendMessage({ receiverId, message: text, attachments, tempId });
+        const res   = await messageAPI.sendMessage({ receiverId, message: text, attachments, tempId });
         const saved = res.data;
         setMessages(prev =>
           prev.map(m => m._id === tempId ? { ...m, _id: saved.messageId, status: 'sent' } : m)
@@ -230,6 +253,7 @@ export default function OwnerMessages() {
     }
   }, [activeConvId, conversations, user]);
 
+  /* ── Typing indicator ── */
   const sendTyping = useCallback((isTyping) => {
     const activeConv = conversations.find(c =>
       (c.conversationId || c.id || c._id) === activeConvId
@@ -239,15 +263,19 @@ export default function OwnerMessages() {
     sendWS('typing', { conversationId: activeConvId, receiverId, isTyping });
   }, [activeConvId, conversations]);
 
-  const activeConv = conversations.find(c =>
-    (c.conversationId || c.id || c._id) === activeConvId
-  );
-  const otherUser = activeConv?.otherUser || null;
+  const activeConv    = conversations.find(c => (c.conversationId || c.id || c._id) === activeConvId);
+  const otherUser     = activeConv?.otherUser || null;
   const isOtherOnline = otherUser && onlineUsers.has(String(otherUser._id || otherUser.id));
-  const isTyping = Object.keys(typingUsers).length > 0;
+  const isTyping      = Object.keys(typingUsers).length > 0;
 
   return (
     <OwnerLayout>
+      {!wsConnected && (
+        <div style={styles.offlineBanner}>
+          ⚠️ Real-time connection unavailable — messages will refresh automatically
+        </div>
+      )}
+
       <div className="messages-shell owner-messages-shell" style={styles.wrapper}>
         <ConversationList
           conversations={conversations}
@@ -287,6 +315,15 @@ export default function OwnerMessages() {
 }
 
 const styles = {
+  offlineBanner: {
+    background: '#FEF3C7',
+    color: '#92400E',
+    fontSize: 13,
+    fontWeight: 500,
+    padding: '8px 16px',
+    textAlign: 'center',
+    borderBottom: '1px solid #FDE68A',
+  },
   wrapper: {
     display: 'grid',
     gridTemplateColumns: '320px 1fr',
@@ -305,7 +342,7 @@ const styles = {
     height: '100%',
     gap: 12,
   },
-  emptyIcon: { fontSize: 56, lineHeight: 1 },
+  emptyIcon:  { fontSize: 56, lineHeight: 1 },
   emptyTitle: { fontSize: 18, fontWeight: 700, color: '#475569' },
-  emptyDesc: { fontSize: 14, color: '#94A3B8', textAlign: 'center', maxWidth: 280 },
+  emptyDesc:  { fontSize: 14, color: '#94A3B8', textAlign: 'center', maxWidth: 280 },
 };
