@@ -6,6 +6,7 @@ import { notificationAPI } from '../../services/api';
 export default function Navbar() {
   const { user, logout, isAuthenticated } = useAuth();
   const navigate = useNavigate();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -88,7 +89,7 @@ export default function Navbar() {
   return (
     <nav className="bg-white shadow-md sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center h-16">
+        <div className="flex justify-between items-center h-16 gap-3">
           {/* Logo */}
           <Link to="/" className="flex items-center space-x-2">
             <img src="/logo.png" alt="Rent Zone" style={{ width: 46, height: 46 }} />
@@ -97,7 +98,7 @@ export default function Navbar() {
 
           {/* Right-side actions */}
           {isAuthenticated ? (
-            <div className="flex items-center space-x-4">
+            <div className="hidden md:flex items-center space-x-4">
               <Link
                 to={getDashboardRoute()}
                 className="text-gray-700 hover:text-[#2563EB] font-medium text-sm"
@@ -172,7 +173,7 @@ export default function Navbar() {
               </button>
             </div>
           ) : (
-            <div className="flex items-center space-x-3">
+            <div className="hidden md:flex items-center space-x-3">
               <Link to="/login">
                 <button className="bg-gray-100 text-gray-800 hover:bg-gray-200 px-4 py-2 rounded-lg text-sm font-semibold transition-colors">
                   Login
@@ -185,7 +186,83 @@ export default function Navbar() {
               </Link>
             </div>
           )}
+
+          {isAuthenticated && (
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen(v => !v)}
+              className="md:hidden inline-flex items-center justify-center rounded-lg border border-gray-200 p-2 text-gray-700 hover:text-[#2563EB]"
+              aria-label="Toggle navigation menu"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="3" y1="6" x2="21" y2="6" />
+                <line x1="3" y1="12" x2="21" y2="12" />
+                <line x1="3" y1="18" x2="21" y2="18" />
+              </svg>
+            </button>
+          )}
+
+          {!isAuthenticated && (
+            <div className="md:hidden flex items-center space-x-2">
+              <Link to="/login" className="text-sm font-semibold text-gray-700 hover:text-[#2563EB]">
+                Login
+              </Link>
+              <Link to="/register" className="bg-gradient-to-r from-[#2563EB] to-[#14B8A6] text-white px-3 py-2 rounded-lg text-sm font-semibold">
+                Join
+              </Link>
+            </div>
+          )}
         </div>
+
+        {isAuthenticated && mobileMenuOpen && (
+          <div className="md:hidden pb-4">
+            <div className="border border-gray-200 rounded-2xl bg-white shadow-lg p-3 space-y-2">
+              <Link to={getDashboardRoute()} onClick={() => setMobileMenuOpen(false)} className="block rounded-xl px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">
+                Dashboard
+              </Link>
+              <Link to="/properties" onClick={() => setMobileMenuOpen(false)} className="block rounded-xl px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">
+                Browse Properties
+              </Link>
+              <button type="button" onClick={() => setShowNotifications(v => !v)} className="block w-full text-left rounded-xl px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">
+                Notifications {unreadCount > 0 ? `(${unreadCount})` : ''}
+              </button>
+              <button type="button" onClick={handleLogout} className="block w-full text-left rounded-xl px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50">
+                Logout
+              </button>
+              {showNotifications && (
+                <div className="border border-gray-200 rounded-xl bg-gray-50 overflow-hidden">
+                  <div className="flex items-center justify-between px-3 py-2 border-b border-gray-200">
+                    <strong className="text-xs text-gray-700">Notifications</strong>
+                    {unreadCount > 0 && (
+                      <button type="button" onClick={handleMarkAllRead} className="text-[11px] text-[#2563EB] font-semibold">
+                        Mark all read
+                      </button>
+                    )}
+                  </div>
+                  <div className="max-h-64 overflow-y-auto bg-white">
+                    {loadingNotifications ? (
+                      <div className="p-3 text-sm text-gray-500">Loading...</div>
+                    ) : notifications.length === 0 ? (
+                      <div className="p-3 text-sm text-gray-500">No messages</div>
+                    ) : (
+                      notifications.map((n) => (
+                        <button
+                          key={n._id}
+                          type="button"
+                          onClick={() => handleMarkAsRead(n)}
+                          className={`w-full text-left px-3 py-2 border-b border-gray-50 hover:bg-gray-50 ${n.isRead ? 'bg-white' : 'bg-blue-50/40'}`}
+                        >
+                          <div className="text-sm font-semibold text-gray-800">{n.title || 'Notifications'}</div>
+                          <div className="text-xs text-gray-600 mt-0.5 line-clamp-2">{n.message || 'Notifications'}</div>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </nav>
   );

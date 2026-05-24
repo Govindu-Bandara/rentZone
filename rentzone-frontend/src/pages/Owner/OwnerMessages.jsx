@@ -248,7 +248,7 @@ export default function OwnerMessages() {
 
   return (
     <OwnerLayout>
-      <div style={styles.wrapper}>
+      <div className="messages-shell owner-messages-shell" style={styles.wrapper}>
         <ConversationList
           conversations={conversations}
           activeConvId={activeConvId}

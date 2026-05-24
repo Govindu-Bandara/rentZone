@@ -312,7 +312,7 @@ export default function RenterMessages() {
 
   return (
     <RenterLayout>
-      <div style={styles.wrapper}>
+      <div className="messages-shell renter-messages-shell" style={styles.wrapper}>
         <ConversationList
           conversations={conversations}
           activeConvId={activeConvId}

@@ -108,7 +108,7 @@ export default function AdminSystemLogs() {
 
       {/* ── Statistics ── */}
       {statistics && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 16, marginBottom: 28 }}>
+        <div className="system-logs-stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 16, marginBottom: 28 }}>
           <div className="card" style={{ padding: 16, textAlign: 'center' }}>
             <div style={{ fontSize: 20, fontWeight: 700, color: '#2563EB', marginBottom: 4 }}>
               {statistics.info || 0}
@@ -141,7 +141,7 @@ export default function AdminSystemLogs() {
 
       {/* ── Filters ── */}
       <div className="card" style={{ marginBottom: 28, padding: 20 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
+        <div className="system-logs-filters-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
           <div>
             <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6, display: 'block' }}>
               Search Logs
@@ -230,7 +230,7 @@ export default function AdminSystemLogs() {
 
       {/* ── Logs Table ── */}
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-        <div style={{ overflowX: 'auto' }}>
+          <div className="system-logs-table-wrap" style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1000 }}>
             <thead>
               <tr style={{ borderBottom: '1px solid #E2E8F0', background: '#F8FAFC' }}>
@@ -334,15 +334,15 @@ export default function AdminSystemLogs() {
 
       {/* ── Log Details Modal ── */}
       {selectedLog && (
-        <div style={{
+        <div className="system-logs-modal-overlay" style={{
           position: 'fixed', inset: 0, background: 'rgba(2, 6, 23, 0.55)', backdropFilter: 'blur(4px)',
           display: 'grid', placeItems: 'center', zIndex: 1300, padding: 16
         }}>
-          <div style={{
+          <div className="system-logs-modal" style={{
             background: '#fff', borderRadius: 16, width: 'min(500px, 96vw)',
             boxShadow: '0 24px 60px rgba(0,0,0,0.25)', overflow: 'hidden', maxHeight: '90vh', overflowY: 'auto'
           }}>
-            <div style={{ padding: '20px 24px', borderBottom: '1px solid #E2E8F0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div className="system-logs-modal-header" style={{ padding: '20px 24px', borderBottom: '1px solid #E2E8F0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h2 style={{ fontSize: 18, fontWeight: 700, color: '#0F172A', margin: 0 }}>
                 Log Details
               </h2>
@@ -392,7 +392,7 @@ export default function AdminSystemLogs() {
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
+              <div className="system-logs-detail-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
                 <div>
                   <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6, display: 'block' }}>
                     Timestamp

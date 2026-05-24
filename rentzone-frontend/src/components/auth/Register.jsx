@@ -252,8 +252,8 @@ export default function Register() {
       </div>
 
       {/* Form Panel */}
-      <div className="auth-panel" style={{ width: 520 }}>
-        <div className="auth-form-container" style={{ maxWidth: 460 }}>
+      <div className="auth-panel" style={{ width: 'clamp(320px, 42vw, 520px)' }}>
+        <div className="auth-form-container" style={{ maxWidth: 460, width: '100%' }}>
           <div className="auth-form-header">
             <h2 className="auth-form-title">Create Account</h2>
             <p className="auth-form-subtitle">Get started with Rent Zone</p>

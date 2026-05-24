@@ -294,7 +294,7 @@ export default function PropertyDetails() {
 
       <Stepper activeStep={activeStep} />
 
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 18 }}>
+      <div className="property-details-layout" style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 18 }}>
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
           <img src={details.mainImage} alt={property.title} style={{ width: '100%', height: 300, objectFit: 'cover' }} />
           <div style={{ padding: 16 }}>
@@ -309,7 +309,7 @@ export default function PropertyDetails() {
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0,1fr))', gap: 8, marginBottom: 12 }}>
+            <div className="property-details-stats" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0,1fr))', gap: 8, marginBottom: 12 }}>
               <div className="card" style={{ padding: 10, textAlign: 'center' }}><strong>{details.bedrooms}</strong><div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Bedrooms</div></div>
               <div className="card" style={{ padding: 10, textAlign: 'center' }}><strong>{details.bathrooms}</strong><div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Bathrooms</div></div>
               <div className="card" style={{ padding: 10, textAlign: 'center' }}><strong>{property.maxOccupancy || 1}</strong><div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Guests</div></div>
@@ -382,7 +382,7 @@ export default function PropertyDetails() {
               <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>Complete Payment</h3>
               <input className="form-input" placeholder="Cardholder name" value={paymentForm.cardName} onChange={(e) => setPaymentForm((f) => ({ ...f, cardName: e.target.value }))} style={{ marginBottom: 8 }} />
               <input className="form-input" placeholder="Card number" value={paymentForm.cardNumber} onChange={(e) => setPaymentForm((f) => ({ ...f, cardNumber: e.target.value }))} style={{ marginBottom: 8 }} />
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+              <div className="property-details-payment-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
                 <input className="form-input" placeholder="MM/YY" value={paymentForm.expiry} onChange={(e) => setPaymentForm((f) => ({ ...f, expiry: e.target.value }))} />
                 <input className="form-input" placeholder="CVC" value={paymentForm.cvc} onChange={(e) => setPaymentForm((f) => ({ ...f, cvc: e.target.value }))} />
               </div>

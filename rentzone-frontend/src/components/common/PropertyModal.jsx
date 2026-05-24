@@ -409,12 +409,12 @@ export default function PropertyModal({ propertyId, onClose, initialBookingId })
         display: 'grid', placeItems: 'center', fontSize: 18,
       }}>×</button>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: 0, height: '100%', overflow: 'hidden' }}>
+      <div className="property-modal-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: 0, height: '100%', overflow: 'hidden' }}>
 
         {/* ── LEFT: Property Info ──────────────────────────────── */}
-        <div style={{ overflowY: 'auto', borderRight: '1px solid #E2E8F0' }}>
+        <div className="property-modal-main" style={{ overflowY: 'auto', borderRight: '1px solid #E2E8F0' }}>
           {/* Image */}
-          <div style={{ position: 'relative', height: 260, background: '#0F172A', overflow: 'hidden' }}>
+          <div className="property-modal-hero" style={{ position: 'relative', height: 260, background: '#0F172A', overflow: 'hidden' }}>
             <img src={mainImage} alt={property.title} style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.9 }} />
 
             {/* Badges */}
@@ -458,7 +458,7 @@ export default function PropertyModal({ propertyId, onClose, initialBookingId })
             </p>
 
             {/* Stats */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 18 }}>
+            <div className="property-modal-stats" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 18 }}>
               {[
                 { label: 'Bedrooms',  value: details.bedrooms },
                 { label: 'Bathrooms', value: details.bathrooms },
@@ -504,7 +504,7 @@ export default function PropertyModal({ propertyId, onClose, initialBookingId })
             </button>
 
             {/* Owner info */}
-            <div style={{ marginTop: 18, padding: '14px', background: '#F8FAFC', borderRadius: 10, border: '1px solid #E2E8F0' }}>
+            <div className="property-modal-owner" style={{ marginTop: 18, padding: '14px', background: '#F8FAFC', borderRadius: 10, border: '1px solid #E2E8F0' }}>
               <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 8, color: '#1E293B' }}>Property Owner</h3>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'linear-gradient(135deg,#2563EB,#14B8A6)', display: 'grid', placeItems: 'center', color: '#fff', fontWeight: 700, fontSize: 16, overflow: 'hidden', flexShrink: 0 }}>
@@ -557,9 +557,9 @@ export default function PropertyModal({ propertyId, onClose, initialBookingId })
         </div>
 
         {/* ── RIGHT: Booking Panel ─────────────────────────────── */}
-        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+        <div className="property-modal-booking" style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
           {/* Header */}
-          <div style={{ padding: '18px 20px 0', borderBottom: '1px solid #E2E8F0', paddingBottom: 16 }}>
+          <div className="property-modal-stepper" style={{ padding: '18px 20px 0', borderBottom: '1px solid #E2E8F0', paddingBottom: 16 }}>
             <Stepper activeStep={activeStep} />
           </div>
 

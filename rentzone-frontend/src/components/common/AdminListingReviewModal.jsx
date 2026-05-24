@@ -136,11 +136,11 @@ export default function AdminListingReviewModal({
 
   // ── View mode ───────────────────────────────────────────────────────────
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.6)', display: 'grid', placeItems: 'center', zIndex: 1400, padding: 20 }}>
-      <div style={{ width: 'min(1040px, 96vw)', background: '#fff', borderRadius: 14, overflow: 'hidden', boxShadow: '0 30px 80px rgba(2,6,23,0.35)' }}>
+    <div className="listing-review-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.6)', display: 'grid', placeItems: 'center', zIndex: 1400, padding: 20 }}>
+      <div className="listing-review-modal" style={{ width: 'min(1040px, 96vw)', background: '#fff', borderRadius: 14, overflow: 'hidden', boxShadow: '0 30px 80px rgba(2,6,23,0.35)' }}>
 
         {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px', borderBottom: '1px solid #EEF2F7' }}>
+        <div className="listing-review-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px', borderBottom: '1px solid #EEF2F7' }}>
           <div>
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 12px', borderRadius: 999, background: '#EFF6FF', color: '#1D4ED8', fontSize: 12, fontWeight: 700 }}>
               <Eye size={14} /> View
@@ -153,10 +153,10 @@ export default function AdminListingReviewModal({
           </button>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 420px', gap: 20, padding: 22, maxHeight: 'calc(90vh - 100px)', overflowY: 'auto' }}>
+        <div className="listing-review-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 420px', gap: 20, padding: 22, maxHeight: 'calc(90vh - 100px)', overflowY: 'auto' }}>
           {/* Left: images + description */}
-          <div>
-            <div style={{ borderRadius: 12, overflow: 'hidden', background: '#f8fafc' }}>
+          <div className="listing-review-main">
+            <div className="listing-review-hero" style={{ borderRadius: 12, overflow: 'hidden', background: '#f8fafc' }}>
               <img src={images[activeImageIdx] || getImage(listing)} alt={title} style={{ width: '100%', height: 480, objectFit: 'cover', display: 'block' }} />
             </div>
 
@@ -186,10 +186,11 @@ export default function AdminListingReviewModal({
           </div>
 
           {/* Right: owner + map + details */}
-          <aside style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <aside className="listing-review-side" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
 
             {/* Owner card — click to open AdminUserDetailModal */}
             <div
+              className="listing-review-owner"
               onClick={() => listing.owner?._id && setShowUserDetailModal(true)}
               style={{
                 padding: 14, borderRadius: 10, border: '1px solid #EEF2F7', background: '#fff',

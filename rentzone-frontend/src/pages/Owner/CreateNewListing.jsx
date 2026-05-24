@@ -257,7 +257,7 @@ export default function CreateNewListing() {
             </div>
 
             {/* Property Type, Rental Price and Security Deposit */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 20 }}>
+            <div className="listing-three-col-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 20 }}>
               <div>
                 <label style={{ display: 'block', fontSize: 14, fontWeight: 500, marginBottom: 8, color: 'var(--text-primary)' }}>
                   Property Type <span style={{ color: 'var(--error)' }}>*</span>
@@ -350,7 +350,7 @@ export default function CreateNewListing() {
             </div>
 
             {/* Bedrooms, Bathrooms, Square Feet */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 20 }}>
+            <div className="listing-three-col-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 20 }}>
               <div>
                 <label style={{ display: 'block', fontSize: 14, fontWeight: 500, marginBottom: 8, color: 'var(--text-primary)' }}>
                   Bedrooms <span style={{ color: 'var(--error)' }}>*</span>
@@ -457,7 +457,7 @@ export default function CreateNewListing() {
             </div>
 
             {/* City, District, Postal Code */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 20 }}>
+            <div className="listing-three-col-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 20 }}>
               <div>
                 <label style={{ display: 'block', fontSize: 14, fontWeight: 500, marginBottom: 8, color: 'var(--text-primary)' }}>
                   City <span style={{ color: 'var(--error)' }}>*</span>
@@ -678,7 +678,7 @@ export default function CreateNewListing() {
             Amenities
           </h2>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20 }}>
+          <div className="amenities-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20 }}>
             {[
               { key: 'wifi', label: 'WiFi' },
               { key: 'parking', label: 'Parking' },
@@ -707,7 +707,7 @@ export default function CreateNewListing() {
         </div>
 
         {/* Action Buttons */}
-        <div style={{ display: 'flex', gap: 16, justifyContent: 'flex-end', paddingTop: 8 }}>
+        <div className="listing-form-actions" style={{ display: 'flex', gap: 16, justifyContent: 'flex-end', paddingTop: 8 }}>
           <button
             type="button"
             onClick={handleCancel}
