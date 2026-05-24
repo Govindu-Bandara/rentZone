@@ -35,14 +35,11 @@ jobs:
 
       - name: Setup server and install Nginx
         run: |
-          ssh -i ~/.ssh/deploy_key.pem ubuntu@${{ secrets.EC2_HOST }} "
-            sudo apt update -y &&
-            sudo apt install nginx -y &&
-            sudo mkdir -p /var/www/html &&
-            sudo chown -R ubuntu:ubuntu /var/www/html &&
-            sudo systemctl enable nginx &&
-            sudo systemctl start nginx
-          "
+          ssh -i ~/.ssh/deploy_key.pem ubuntu@${{ secrets.EC2_HOST }} 'sudo apt update -y && sudo apt install nginx -y && sudo mkdir -p /var/www/html && sudo chown -R ubuntu:ubuntu /var/www/html'
+
+      - name: Configure Nginx
+        run: |
+          ssh -i ~/.ssh/deploy_key.pem ubuntu@${{ secrets.EC2_HOST }} 'printf "server {\n    listen 80;\n    server_name _;\n    root /var/www/html;\n    index index.html;\n    location / {\n        try_files \$uri \$uri/ /index.html;\n    }\n}\n" | sudo tee /etc/nginx/sites-available/default && sudo nginx -t && sudo systemctl enable nginx && sudo systemctl restart nginx'
 
       - name: Upload build to EC2
         run: |
