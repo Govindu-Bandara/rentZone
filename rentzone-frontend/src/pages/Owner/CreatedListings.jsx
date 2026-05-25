@@ -221,9 +221,20 @@ export default function CreatedListings() {
 
       {/* Search & Filters */}
       <div className="card" style={{ marginBottom: 24, padding: 20 }}>
-        <div style={{ display: 'flex', gap: 12, marginBottom: showFilters ? 16 : 0, flexWrap: 'wrap' }}>
+        <div style={{
+          display: 'flex',
+          gap: 12,
+          marginBottom: showFilters ? 16 : 0,
+          flexWrap: 'wrap',
+          '@media (max-width: 768px)': { flexDirection: 'column' }
+        }}>
           {/* Search */}
-          <div style={{ flex: 1, minWidth: 250, position: 'relative' }}>
+          <div style={{
+            flex: 1,
+            minWidth: 250,
+            position: 'relative',
+            '@media (max-width: 768px)': { minWidth: '100%' }
+          }}>
             <Search size={18} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#94A3B8' }} />
             <input
               type="text"
@@ -285,7 +296,13 @@ export default function CreatedListings() {
 
         {/* Advanced Filters */}
         {showFilters && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12, paddingTop: 16, borderTop: '1px solid #E2E8F0' }}>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+            gap: 12,
+            paddingTop: 16,
+            borderTop: '1px solid #E2E8F0'
+          }}>
             <select
               value={filters.verificationStatus}
               onChange={e => handleFilterChange('verificationStatus', e.target.value)}
@@ -383,9 +400,17 @@ export default function CreatedListings() {
           <div style={{ display: 'grid', gap: 20, marginBottom: 24 }}>
             {listings.map(listing => (
               <div key={listing._id} className="card" style={{ padding: 0, overflow: 'hidden' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr auto', gap: 0 }}>
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: window.innerWidth >= 768 ? '240px 1fr auto' : '1fr',
+                  gap: 0,
+                }}>
                   {/* Image */}
-                  <div style={{ position: 'relative', background: '#F1F5F9' }}>
+                  <div style={{
+                    position: 'relative',
+                    background: '#F1F5F9',
+                    height: window.innerWidth >= 768 ? 'auto' : '200px'
+                  }}>
                     <img
                       src={getListingImageSrc(listing)}
                       alt={listing.title}
@@ -455,7 +480,15 @@ export default function CreatedListings() {
                   </div>
 
                   {/* Actions */}
-                  <div style={{ padding: 20, borderLeft: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', gap: 10, justifyContent: 'center' }}>
+                  <div style={{
+                    padding: 20,
+                    borderLeft: window.innerWidth >= 768 ? '1px solid #E2E8F0' : 'none',
+                    borderTop: window.innerWidth < 768 ? '1px solid #E2E8F0' : 'none',
+                    display: 'flex',
+                    flexDirection: window.innerWidth >= 768 ? 'column' : 'row',
+                    gap: 10,
+                    justifyContent: window.innerWidth >= 768 ? 'center' : 'flex-start'
+                  }}>
                     <button
                       onClick={() => navigate(`/owner/properties/${listing._id}/edit`, { state: { listing } })}
                       className="btn"
@@ -468,6 +501,7 @@ export default function CreatedListings() {
                         color: '#475569',
                         border: 'none',
                         fontSize: 14,
+                        flex: window.innerWidth < 768 ? '1 1 auto' : 'auto'
                       }}
                     >
                       <Edit size={16} />
@@ -485,6 +519,7 @@ export default function CreatedListings() {
                         color: '#991B1B',
                         border: 'none',
                         fontSize: 14,
+                        flex: window.innerWidth < 768 ? '1 1 auto' : 'auto'
                       }}
                     >
                       <Trash2 size={16} />

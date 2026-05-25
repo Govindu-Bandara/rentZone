@@ -3,8 +3,6 @@
  * Real-time messaging inbox for renters.
  *
  * Fixes applied:
- *  - wsConnected initialised to null so offline banner never flashes on load
- *  - Banner only renders when wsConnected === false (known disconnected)
  *  - sendWS returning false triggers immediate REST fallback for all actions
  *  - location.state cleared after first read to prevent re-trigger on refresh
  *  - activeConvId set for pendingRecipient so ws_poll / ws_connected work
@@ -31,13 +29,7 @@ export default function RenterMessages() {
   const [loadingConvs, setLoadingConvs]         = useState(true);
   const [loadingMsgs, setLoadingMsgs]           = useState(false);
   const [typingUsers, setTypingUsers]           = useState({});
-  const [onlineUsers, setOnlineUsers]           = useState(new Set());
   const [pendingRecipient, setPendingRecipient] = useState(null);
-
-  // null  = not yet determined (connecting…)
-  // true  = WebSocket is open
-  // false = known disconnected — show banner
-  const [wsConnected, setWsConnected] = useState(null);
 
   const activeConvRef        = useRef(null);
   activeConvRef.current      = activeConvId;
@@ -106,18 +98,12 @@ export default function RenterMessages() {
 
       case 'ws_connected': {
         console.log('[RenterMessages] WS connected — refreshing data');
-        setWsConnected(true);
         loadConversationsRef.current?.().then(() => {
           const convId = activeConvRef.current;
           if (convId && !convId.startsWith('pending_')) {
             loadMessagesRef.current?.(convId, true);
           }
         });
-        break;
-      }
-
-      case 'ws_disconnected': {
-        setWsConnected(false);
         break;
       }
 
@@ -219,18 +205,6 @@ export default function RenterMessages() {
         }
         break;
       }
-
-      case 'userOnline':
-        setOnlineUsers(prev => new Set([...prev, data.userId]));
-        break;
-
-      case 'userOffline':
-        setOnlineUsers(prev => {
-          const s = new Set(prev);
-          s.delete(data.userId);
-          return s;
-        });
-        break;
 
       default: break;
     }
@@ -367,19 +341,10 @@ export default function RenterMessages() {
   const otherUser = activeConv?.otherUser || (pendingRecipient
     ? { _id: pendingRecipient._id, firstName: pendingRecipient.name, lastName: '' }
     : null);
-
-  const isOtherOnline = otherUser && onlineUsers.has(String(otherUser._id || otherUser.id));
   const isTyping      = Object.keys(typingUsers).length > 0;
 
   return (
     <RenterLayout>
-      {/* Only render banner when we know for sure the connection is down */}
-      {wsConnected === false && (
-        <div style={styles.offlineBanner}>
-          ⚠️ Real-time connection unavailable — messages will refresh automatically
-        </div>
-      )}
-
       <div className="messages-shell renter-messages-shell" style={styles.wrapper}>
         <ConversationList
           conversations={conversations}
@@ -395,7 +360,6 @@ export default function RenterMessages() {
           loading={loadingMsgs}
           currentUserId={user?._id || user?.id}
           otherUser={otherUser}
-          isOnline={isOtherOnline}
           isTyping={isTyping}
           onSend={sendMessage}
           onTyping={sendTyping}
@@ -423,15 +387,6 @@ function EmptyInbox() {
 }
 
 const styles = {
-  offlineBanner: {
-    background:   '#FEF3C7',
-    color:        '#92400E',
-    fontSize:     13,
-    fontWeight:   500,
-    padding:      '8px 16px',
-    textAlign:    'center',
-    borderBottom: '1px solid #FDE68A',
-  },
   wrapper: {
     display:             'grid',
     gridTemplateColumns: '320px 1fr',

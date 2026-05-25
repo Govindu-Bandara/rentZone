@@ -1,7 +1,7 @@
 /**
  * ChatPanel.jsx
  * The main chat window: message bubbles, timestamp grouping, delivery/read ticks,
- * typing indicator, online status, and message input with emoji + attachment stubs.
+ * typing indicator, and message input with emoji + attachment stubs.
  * Shared between RenterMessages and OwnerMessages.
  */
 
@@ -178,7 +178,7 @@ function DayDivider({ label }) {
 }
 
 /* ── Header ── */
-function ChatHeader({ otherUser, isOnline, propertyTitle }) {
+function ChatHeader({ otherUser, propertyTitle }) {
   const name = [otherUser?.firstName || otherUser?.name, otherUser?.lastName].filter(Boolean).join(' ') || 'Unknown';
   const initials = (() => {
     const f = otherUser?.firstName || otherUser?.name || '';
@@ -189,7 +189,7 @@ function ChatHeader({ otherUser, isOnline, propertyTitle }) {
   return (
     <div style={hdStyles.header}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <div style={{ position: 'relative' }}>
+        <div>
           {otherUser?.profileImage ? (
             <img src={otherUser.profileImage} alt={name} style={hdStyles.avatar} />
           ) : (
@@ -197,18 +197,10 @@ function ChatHeader({ otherUser, isOnline, propertyTitle }) {
               {initials}
             </div>
           )}
-          {/* Online dot */}
-          <div style={{
-            position: 'absolute', bottom: 1, right: 1,
-            width: 10, height: 10, borderRadius: '50%',
-            background: isOnline ? '#10B981' : '#CBD5E1',
-            border: '2px solid #fff',
-          }} />
         </div>
         <div>
           <div style={{ fontWeight: 700, fontSize: 15, color: '#1E293B' }}>{name}</div>
-          <div style={{ fontSize: 12, color: isOnline ? '#10B981' : '#94A3B8' }}>
-            {isOnline ? 'Online' : 'Offline'}
+          <div style={{ fontSize: 12, color: '#94A3B8' }}>
             {propertyTitle && <span style={{ color: '#CBD5E1' }}> · {propertyTitle}</span>}
           </div>
         </div>
@@ -384,7 +376,6 @@ export default function ChatPanel({
   loading,
   currentUserId,
   otherUser,
-  isOnline,
   isTyping,
   onSend,
   onTyping,
@@ -414,7 +405,7 @@ export default function ChatPanel({
     <div style={cpStyles.wrapper}>
       {/* Header */}
       {otherUser && (
-        <ChatHeader otherUser={otherUser} isOnline={isOnline} propertyTitle={propertyTitle} />
+        <ChatHeader otherUser={otherUser} propertyTitle={propertyTitle} />
       )}
 
       {/* Messages area */}

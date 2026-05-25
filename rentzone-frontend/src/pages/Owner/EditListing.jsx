@@ -286,7 +286,11 @@ export default function EditListing() {
               {errors.description && <span style={{ display: 'block', color: 'var(--error)', fontSize: 12, marginTop: 6 }}>{errors.description}</span>}
             </div>
 
-            <div className="listing-three-col-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 20 }}>
+            <div className="listing-three-col-grid" style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+              gap: 20
+            }}>
               <div>
                 <label style={{ display: 'block', fontSize: 14, fontWeight: 500, marginBottom: 8, color: 'var(--text-primary)' }}>
                   Property Type <span style={{ color: 'var(--error)' }}>*</span>
@@ -331,7 +335,11 @@ export default function EditListing() {
               </div>
             </div>
 
-            <div className="listing-three-col-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 20 }}>
+            <div className="listing-three-col-grid" style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+              gap: 20
+            }}>
               {[
                 { name: 'bedrooms', label: 'Bedrooms', required: true },
                 { name: 'bathrooms', label: 'Bathrooms', required: true },
@@ -367,7 +375,11 @@ export default function EditListing() {
               {errors.address && <span style={{ display: 'block', color: 'var(--error)', fontSize: 12, marginTop: 6 }}>{errors.address}</span>}
             </div>
 
-            <div className="listing-three-col-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 20 }}>
+            <div className="listing-three-col-grid" style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+              gap: 20
+            }}>
               <div>
                 <label style={{ display: 'block', fontSize: 14, fontWeight: 500, marginBottom: 8, color: 'var(--text-primary)' }}>
                   City <span style={{ color: 'var(--error)' }}>*</span>
@@ -498,7 +510,11 @@ export default function EditListing() {
         {/* ── Amenities ── */}
         <div className="card" style={{ marginBottom: 32, padding: 28 }}>
           <h2 style={{ fontSize: 17, fontWeight: 600, marginBottom: 24, color: 'var(--text-primary)', borderBottom: '1px solid #E2E8F0', paddingBottom: 12 }}>Amenities</h2>
-          <div className="amenities-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20 }}>
+          <div className="amenities-grid" style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+            gap: 20
+          }}>
             {[
               { key: 'wifi', label: 'WiFi' }, { key: 'parking', label: 'Parking' },
               { key: 'ac', label: 'Air Conditioning' }, { key: 'heating', label: 'Heating' },

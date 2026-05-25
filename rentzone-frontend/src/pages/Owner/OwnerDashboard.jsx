@@ -251,7 +251,7 @@ export default function OwnerDashboard() {
           <Link to="/owner/bookings" className="view-all-btn">View All →</Link>
         </div>
 
-        <div style={{ overflowX: 'auto' }}>
+        <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', marginLeft: -20, marginRight: -20, marginBottom: -20, paddingLeft: 20, paddingRight: 20, paddingBottom: 20 }}>
           <table style={{ width: '100%', minWidth: 920, borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid #E2E8F0' }}>
@@ -364,7 +364,8 @@ export default function OwnerDashboard() {
           className="properties-grid"
           style={{
             padding: 20,
-            gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
             gap: 16,
           }}
         >

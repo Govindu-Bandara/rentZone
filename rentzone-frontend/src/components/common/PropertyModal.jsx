@@ -55,6 +55,42 @@ function InfoRow({ label, value, bold, color }) {
   );
 }
 
+const AMENITY_LABELS = {
+  wifi: 'WiFi',
+  parking: 'Parking',
+  ac: 'AC',
+  airconditioning: 'Air Conditioning',
+  heating: 'Heating',
+  kitchen: 'Kitchen',
+  washerdryer: 'Washer Dryer',
+  petfriendly: 'Pet Friendly',
+  gym: 'Gym',
+  pool: 'Swimming Pool',
+  balcony: 'Balcony',
+  garden: 'Garden',
+  securitysystem: 'Security System',
+  laundry: 'Laundry',
+  acheating: 'AC/Heating',
+};
+
+function formatAmenityLabel(amenity) {
+  if (!amenity) return '';
+
+  const normalized = String(amenity).replace(/[_\-/\s]+/g, '').toLowerCase();
+  if (AMENITY_LABELS[normalized]) return AMENITY_LABELS[normalized];
+
+  const text = String(amenity)
+    .replace(/[_\-]+/g, ' ')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .trim();
+
+  return text
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
+}
+
 /* ─── Main Modal ──────────────────────────────────────────── */
 export default function PropertyModal({ propertyId, onClose, initialBookingId }) {
   const navigate = useNavigate();
@@ -513,7 +549,7 @@ export default function PropertyModal({ propertyId, onClose, initialBookingId })
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                   {property.amenities.map(a => (
                     <span key={a} style={{ background: '#EFF6FF', color: '#2563EB', fontSize: 12, fontWeight: 500, padding: '4px 12px', borderRadius: 20, border: '1px solid #BFDBFE' }}>
-                      {a}
+                      {formatAmenityLabel(a)}
                     </span>
                   ))}
                 </div>

@@ -208,7 +208,7 @@ export default function OwnerBookings() {
             No bookings found.
           </div>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
+          <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', marginLeft: -20, marginRight: -20, marginBottom: -20, paddingLeft: 20, paddingRight: 20, paddingBottom: 20 }}>
             <table style={{ width: '100%', minWidth: 1020, borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid #E2E8F0' }}>
