@@ -27,6 +27,14 @@ const INITIAL_OWNER = {
   agreeTerms: false,
 };
 
+function normalizePhoneNumber(phone) {
+  const value = phone.replace(/[\s-]/g, '').trim();
+  if (/^\+94\d{9}$/.test(value)) {
+    return `0${value.slice(3)}`;
+  }
+  return value;
+}
+
 // Reusable NIC image uploader sub-component
 function NICUploader({ label, side, onUploadComplete, preview, error }) {
   const inputRef = useRef(null);
@@ -160,9 +168,18 @@ export default function Register() {
     const errs = {};
     if (!form.fullName.trim()) errs.fullName = 'Full name is required';
     if (!/\S+@\S+\.\S+/.test(form.email)) errs.email = 'Valid email is required';
-    if (!/^\d{10}$/.test(form.phone.replace(/\s/g, ''))) errs.phone = 'Valid 10-digit phone required';
-    if (form.password.length < 8) errs.password = 'Password must be at least 8 characters';
-    if (getPasswordStrength(form.password).score < 4) errs.password = 'Password must meet all requirements';
+    if (!/^(0\d{9}|\+94\d{9})$/.test(form.phone.replace(/[\s-]/g, '').trim())) {
+      errs.phone = 'Enter a valid phone number starting with 0 or +94';
+    }
+
+    // Password: collect all failing rules and show them
+    if (!form.password) {
+      errs.password = PASSWORD_RULES.map(r => r.label);
+    } else {
+      const failedRules = PASSWORD_RULES.filter(r => !r.test(form.password)).map(r => r.label);
+      if (failedRules.length > 0) errs.password = failedRules;
+    }
+
     if (form.password !== form.confirmPassword) errs.confirmPassword = 'Passwords do not match';
     if (!form.agreeTerms) errs.agreeTerms = 'You must accept the terms';
 
@@ -194,7 +211,7 @@ export default function Register() {
       firstName, lastName,
       email: form.email,
       password: form.password,
-      phone: form.phone,
+      phone: normalizePhoneNumber(form.phone),
       role: role === 'owner' ? 'owner' : 'renter',
     };
 
@@ -355,7 +372,21 @@ export default function Register() {
                   <span className="strength-label">Strength: {strength.label}</span>
                 </div>
               )}
-              {fieldErrors.password && <span className="form-error">{fieldErrors.password}</span>}
+              {fieldErrors.password && (
+                <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <span className="form-error" style={{ fontWeight: 600 }}>Password must include:</span>
+                  {(Array.isArray(fieldErrors.password) ? fieldErrors.password : [fieldErrors.password]).map(req => (
+                    <span key={req} className="form-error" style={{ display: 'flex', alignItems: 'center', gap: 5, fontWeight: 400 }}>
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ flexShrink: 0 }}>
+                        <circle cx="12" cy="12" r="10"/>
+                        <line x1="12" y1="8" x2="12" y2="13"/>
+                        <line x1="12" y1="16" x2="12.01" y2="16"/>
+                      </svg>
+                      {req}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Confirm Password */}

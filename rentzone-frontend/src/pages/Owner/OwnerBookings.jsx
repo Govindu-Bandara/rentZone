@@ -83,6 +83,28 @@ function resolveDisplayAmount(booking) {
   return total;
 }
 
+function resolvePaymentStatusDisplay(booking) {
+  const raw = String(booking?.paymentStatus || 'pending').toLowerCase();
+
+  if (raw === 'initial_paid') {
+    return { label: 'Paid', bg: '#ECFDF5', color: '#065F46' };
+  }
+
+  if (raw === 'paid') {
+    return { label: 'Paid', bg: '#ECFDF5', color: '#065F46' };
+  }
+
+  if (raw === 'partial') {
+    return { label: 'Partial', bg: '#FFFBEB', color: '#92400E' };
+  }
+
+  if (raw === 'failed') {
+    return { label: 'Failed', bg: '#FEF2F2', color: '#991B1B' };
+  }
+
+  return { label: 'Pending', bg: '#F8FAFC', color: '#475569' };
+}
+
 export default function OwnerBookings() {
   const [bookings,  setBookings ] = useState([]);
   const [loading,   setLoading  ] = useState(true);
@@ -206,6 +228,7 @@ export default function OwnerBookings() {
                   const property      = booking.property || {};
                   const renter        = booking.renter   || {};
                   const displayAmount = resolveDisplayAmount(booking);
+                  const paymentView   = resolvePaymentStatusDisplay(booking);
 
                   return (
                     <tr key={id} style={{ borderBottom: '1px solid #F1F5F9' }}>
@@ -263,7 +286,18 @@ export default function OwnerBookings() {
 
                       {/* Payment */}
                       <td style={{ padding: 14, fontSize: 13 }}>
-                        {booking.paymentStatus || 'pending'}
+                        <span
+                          style={{
+                            background: paymentView.bg,
+                            color: paymentView.color,
+                            borderRadius: 20,
+                            padding: '4px 10px',
+                            fontSize: 12,
+                            fontWeight: 600,
+                          }}
+                        >
+                          {paymentView.label}
+                        </span>
                       </td>
 
                       {/* Actions */}

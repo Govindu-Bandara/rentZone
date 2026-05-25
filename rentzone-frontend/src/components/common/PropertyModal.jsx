@@ -370,7 +370,7 @@ export default function PropertyModal({ propertyId, onClose, initialBookingId })
     
     setProcessingPayment(true);
     try {
-      await paymentAPI.processPayment(bookingId, {
+      const res = await paymentAPI.processPayment(bookingId, {
         paymentMethod: 'card',
         paymentType:   'first_month',
         amount:        paymentDue,
@@ -381,7 +381,25 @@ export default function PropertyModal({ propertyId, onClose, initialBookingId })
           cvc:    paymentForm.cvc,
         },
       });
-      await loadBookings();
+
+      const updatedBooking = res?.data?.booking;
+      if (updatedBooking) {
+        setCurrentBooking((prev) => ({
+          ...prev,
+          ...updatedBooking,
+          status: 'completed',
+          paymentStatus: 'paid',
+          paidAt: updatedBooking.paidAt || new Date().toISOString(),
+        }));
+      } else {
+        setCurrentBooking((prev) => prev ? {
+          ...prev,
+          status: 'completed',
+          paymentStatus: 'paid',
+          paidAt: new Date().toISOString(),
+        } : prev);
+      }
+
       setActiveStep(4);
       toast.success('Payment successful!');
     } catch (err) {
