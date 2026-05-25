@@ -220,6 +220,7 @@ export default function SearchRentals() {
   // Fallback state
   const [fallbackLabel, setFallbackLabel]   = useState('');   // non-empty = showing fallback
   const [originalQuery, setOriginalQuery]   = useState('');
+  const searchInputRef = useRef(null);
 
   const fetchProperties = useCallback(async (f) => {
     setLoading(true);
@@ -299,6 +300,9 @@ export default function SearchRentals() {
     setAppliedFilters(n);
     setShowHints(false);
   };
+  const focusSearchInput = () => {
+    searchInputRef.current?.focus();
+  };
   const setPropType = k => setFilters(f => ({ ...f, propertyTypes: { ...f.propertyTypes, [k]: !f.propertyTypes[k] } }));
   const setAmenity  = k => setFilters(f => ({ ...f, amenities: { ...f.amenities, [k]: !f.amenities[k] } }));
 
@@ -322,6 +326,7 @@ export default function SearchRentals() {
               </svg>
             </span>
             <input
+              ref={searchInputRef}
               type="text"
               className="form-input search-toolbar-input"
               placeholder='Try "annex near university", "house in kandy", "2 bedroom flat"'
@@ -331,7 +336,16 @@ export default function SearchRentals() {
               onBlur={() => setTimeout(() => setShowHints(false), 150)}
               autoComplete="off"
             />
-            {showHints && <SearchHints onSelect={handleHintSelect} />}
+            {showHints && (
+              <div
+                onMouseDown={e => {
+                  e.preventDefault();
+                  focusSearchInput();
+                }}
+              >
+                <SearchHints onSelect={handleHintSelect} />
+              </div>
+            )}
           </div>
           <div className="search-toolbar-actions">
             <button
@@ -476,6 +490,7 @@ export default function SearchRentals() {
           background: var(--color-background-primary, #fff);
           border: 1px solid #e2e8f0; border-radius: 10px;
           padding: 10px 12px; display: flex; flex-wrap: wrap; gap: 6px;
+          cursor: text;
           z-index: 100; box-shadow: 0 4px 16px rgba(0,0,0,0.08);
         }
         .search-hint-pill {
