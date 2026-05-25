@@ -2,12 +2,11 @@
  * OwnerMessages.jsx
  * Real-time messaging inbox for property owners.
  *
- * FIXES:
- *  - Handles 'ws_connected' event → reloads conversations + messages after reconnect
- *  - Handles 'ws_poll' event → re-fetches active conversation messages periodically
- *  - Uses activeConvRef everywhere inside socket handler (no stale closures)
- *  - Deduplicates messages by _id
- *  - Debug listener for diagnostics
+ * Fixes applied:
+ *  - wsConnected initialised to null so offline banner never flashes on load
+ *  - Banner only renders when wsConnected === false (known disconnected)
+ *  - sendWS returning false triggers immediate REST fallback
+ *  - Deduplication on newMessage by _id
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -29,10 +28,14 @@ export default function OwnerMessages() {
   const [loadingMsgs, setLoadingMsgs]     = useState(false);
   const [typingUsers, setTypingUsers]     = useState({});
   const [onlineUsers, setOnlineUsers]     = useState(new Set());
-  const [wsConnected, setWsConnected]     = useState(false);
 
-  const activeConvRef   = useRef(null);
-  activeConvRef.current = activeConvId;
+  // null  = not yet determined (connecting…)
+  // true  = WebSocket is open
+  // false = known disconnected — show banner
+  const [wsConnected, setWsConnected] = useState(null);
+
+  const activeConvRef        = useRef(null);
+  activeConvRef.current      = activeConvId;
 
   const loadConversationsRef = useRef(null);
   const loadMessagesRef      = useRef(null);
@@ -62,7 +65,13 @@ export default function OwnerMessages() {
       const res     = await messageAPI.getMessages(convId);
       const fetched = res.data?.messages || [];
       setMessages(fetched);
-      sendWS('markAsRead', { conversationId: convId });
+
+      // sendWS returns false when socket is closed → fall back to REST
+      const sent = sendWS('markAsRead', { conversationId: convId });
+      if (!sent) {
+        messageAPI.markAsRead({ conversationId: convId }).catch(() => {});
+      }
+
       setConversations(prev =>
         prev.map(c =>
           (c.conversationId || c.id || c._id) === convId
@@ -105,7 +114,6 @@ export default function OwnerMessages() {
         break;
       }
 
-      /* Polling fallback */
       case 'ws_poll': {
         const convId = activeConvRef.current;
         if (convId) {
@@ -124,7 +132,10 @@ export default function OwnerMessages() {
             if (prev.find(m => m._id === msg._id)) return prev;
             return [...prev, msg];
           });
-          sendWS('markAsRead', { conversationId: convId });
+          const sent = sendWS('markAsRead', { conversationId: convId });
+          if (!sent) {
+            messageAPI.markAsRead({ conversationId: convId }).catch(() => {});
+          }
         } else {
           setConversations(prev =>
             prev.map(c =>
@@ -140,6 +151,7 @@ export default function OwnerMessages() {
           );
         }
 
+        // Bubble conversation to top
         setConversations(prev => {
           const exists = prev.find(c => (c.conversationId || c.id || c._id) === convId);
           if (!exists) {
@@ -211,17 +223,11 @@ export default function OwnerMessages() {
 
       default: break;
     }
-  }, []); // Empty deps — uses refs and functional setState
+  }, []);
 
   /* ── Bootstrap ── */
   useEffect(() => {
-    // Debug listener — remove after confirming WS works
-    const debugListener = (data) => {
-      console.log('[OwnerMessages DEBUG] WS event:', data.action || data);
-    };
-
     connectSocket();
-    addSocketListener(debugListener);
     addSocketListener(handleSocketMessage);
 
     loadConversations().then(convs => {
@@ -229,7 +235,6 @@ export default function OwnerMessages() {
     });
 
     return () => {
-      removeSocketListener(debugListener);
       removeSocketListener(handleSocketMessage);
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -276,6 +281,7 @@ export default function OwnerMessages() {
         setMessages(prev =>
           prev.map(m => m._id === tempId ? { ...m, _id: saved.messageId, status: 'sent' } : m)
         );
+        await loadConversations();
       } catch {
         setMessages(prev =>
           prev.map(m => m._id === tempId ? { ...m, status: 'failed' } : m)
@@ -283,7 +289,7 @@ export default function OwnerMessages() {
         toast.error('Failed to send message');
       }
     }
-  }, [activeConvId, conversations, user]);
+  }, [activeConvId, conversations, user, loadConversations]);
 
   /* ── Typing indicator ── */
   const sendTyping = useCallback((isTyping) => {
@@ -304,7 +310,8 @@ export default function OwnerMessages() {
 
   return (
     <OwnerLayout>
-      {!wsConnected && (
+      {/* Only render banner when we know for sure the connection is down */}
+      {wsConnected === false && (
         <div style={styles.offlineBanner}>
           ⚠️ Real-time connection unavailable — messages will refresh automatically
         </div>
@@ -377,6 +384,6 @@ const styles = {
     gap:            12,
   },
   emptyIcon:  { fontSize: 56, lineHeight: 1 },
-  emptyTitle: { fontSize: 18, fontWeight: 700, color: '#475569' },
+  emptyTitle: { fontSize: 18, fontWeight: 700, color: '#57595c' },
   emptyDesc:  { fontSize: 14, color: '#94A3B8', textAlign: 'center', maxWidth: 280 },
 };

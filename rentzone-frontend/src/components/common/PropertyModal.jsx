@@ -271,7 +271,9 @@ export default function PropertyModal({ propertyId, onClose, initialBookingId })
     }
   }, [details.isDaily, details.priceAmount, requestForm.moveInDate, requestForm.duration, requestForm.durationType]);
 
-  // For currently booked (confirmed) - use backend totalAmount minus security deposit
+  // For confirmed bookings:
+  // - Daily rentals: pay full stay rent (+ deposit)
+  // - Monthly rentals: pay only first month (+ deposit)
   const priceDetails = useMemo(() => {
     if (currentBooking) {
       const rentPart = Number(currentBooking.totalAmount || 0) - Number(details.securityDeposit ?? 0);
@@ -287,7 +289,8 @@ export default function PropertyModal({ propertyId, onClose, initialBookingId })
         };
       }
       return {
-        rentAmount: rentPart,
+        // For monthly flow, charge one month using the displayed property monthly rate.
+        rentAmount: Number(details.priceAmount || currentBooking.monthlyRent || 0),
         days: 1,
         label: details.isDaily ? '—' : '1st Month Rent',
         description: 'Rent',
@@ -296,10 +299,17 @@ export default function PropertyModal({ propertyId, onClose, initialBookingId })
     return calculatePricingDetails;
   }, [currentBooking, details, calculatePricingDetails]);
 
+  const requestDue = useMemo(() => {
+    return Number(calculatePricingDetails.rentAmount || 0) + Number(details.securityDeposit || 0);
+  }, [calculatePricingDetails.rentAmount, details.securityDeposit]);
+
   const paymentDue = useMemo(() => {
-    if (currentBooking) return Number(currentBooking.totalAmount || 0);
-    return priceDetails.rentAmount + details.securityDeposit;
-  }, [currentBooking, priceDetails, details.securityDeposit]);
+    if (currentBooking) {
+      if (details.isDaily) return Number(currentBooking.totalAmount || 0);
+      return Number(priceDetails.rentAmount || 0) + Number(details.securityDeposit || 0);
+    }
+    return requestDue;
+  }, [currentBooking, details.isDaily, priceDetails.rentAmount, details.securityDeposit, requestDue]);
 
   /* Submit booking request */
   const submitBookingRequest = async () => {
@@ -650,7 +660,7 @@ export default function PropertyModal({ propertyId, onClose, initialBookingId })
                   <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0 0', marginTop: 8 }}>
                     <span style={{ fontSize: 13, fontWeight: 700, color: '#1E293B' }}>Total Due Today</span>
                     <span style={{ fontSize: 15, fontWeight: 800, color: '#2563EB' }}>
-                      LKR {paymentDue.toLocaleString()}
+                      LKR {requestDue.toLocaleString()}
                     </span>
                   </div>
                 </div>

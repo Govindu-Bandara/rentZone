@@ -191,6 +191,22 @@ export default function PropertyDetails() {
 
   const totalEstimate = estimatedRent + details.securityDeposit;
 
+  const paymentDue = useMemo(() => {
+    if (!currentBooking) return totalEstimate;
+
+    const bookingTotal = Number(currentBooking.totalAmount || 0);
+    const monthlyRent = Number(currentBooking.monthlyRent || details.priceAmount || 0);
+    const securityDeposit = Number(details.securityDeposit || 0);
+
+    if (details.rentalUnit === '/day') {
+      return bookingTotal;
+    }
+
+    // Monthly rentals: collect only first month + deposit at this step.
+    const dueNow = monthlyRent + securityDeposit;
+    return dueNow > 0 ? dueNow : bookingTotal;
+  }, [currentBooking, totalEstimate, details.priceAmount, details.securityDeposit, details.rentalUnit]);
+
   const mapEmbedUrl = useMemo(() => {
     const [lng, lat] = Array.isArray(details.coordinates) ? details.coordinates : [];
     if (lat && lng) {
@@ -244,8 +260,8 @@ export default function PropertyDetails() {
     try {
       await paymentAPI.processPayment(bookingId, {
         paymentMethod: 'card',
-        paymentType: 'full',
-        amount: currentBooking.totalAmount || totalEstimate,
+        paymentType: details.rentalUnit === '/day' ? 'full' : 'first_month',
+        amount: paymentDue,
         cardDetails: {
           name: paymentForm.cardName,
           number: paymentForm.cardNumber,
@@ -387,7 +403,7 @@ export default function PropertyDetails() {
                 <input className="form-input" placeholder="CVC" value={paymentForm.cvc} onChange={(e) => setPaymentForm((f) => ({ ...f, cvc: e.target.value }))} />
               </div>
               <button className="btn btn-primary btn-full" onClick={processPayment} disabled={processingPayment}>
-                {processingPayment ? 'Processing…' : `Pay LKR ${(currentBooking?.totalAmount || totalEstimate).toLocaleString()}`}
+                {processingPayment ? 'Processing…' : `Pay LKR ${paymentDue.toLocaleString()}`}
               </button>
             </div>
           )}

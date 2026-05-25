@@ -2,13 +2,13 @@
  * RenterMessages.jsx
  * Real-time messaging inbox for renters.
  *
- * FIXES:
- *  - Handles 'ws_connected' event → reloads conversations + messages after reconnect
- *  - Handles 'ws_poll' event → re-fetches active conversation messages periodically
- *  - location.state handled correctly without stale closure
- *  - activeConvId set for pendingRecipient so ws_poll/ws_connected work
- *  - location state cleared after reading to prevent re-trigger on refresh
- *  - Debug listener added temporarily for diagnostics
+ * Fixes applied:
+ *  - wsConnected initialised to null so offline banner never flashes on load
+ *  - Banner only renders when wsConnected === false (known disconnected)
+ *  - sendWS returning false triggers immediate REST fallback for all actions
+ *  - location.state cleared after first read to prevent re-trigger on refresh
+ *  - activeConvId set for pendingRecipient so ws_poll / ws_connected work
+ *  - Deduplication on newMessage by _id
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -22,8 +22,8 @@ import ChatPanel from '../../components/messaging/ChatPanel';
 import ConversationList from '../../components/messaging/ConversationList';
 
 export default function RenterMessages() {
-  const { user } = useAuth();
-  const location = useLocation();
+  const { user }    = useAuth();
+  const location    = useLocation();
 
   const [conversations, setConversations]       = useState([]);
   const [activeConvId, setActiveConvId]         = useState(null);
@@ -33,11 +33,14 @@ export default function RenterMessages() {
   const [typingUsers, setTypingUsers]           = useState({});
   const [onlineUsers, setOnlineUsers]           = useState(new Set());
   const [pendingRecipient, setPendingRecipient] = useState(null);
-  const [wsConnected, setWsConnected]           = useState(false);
 
-  // Refs so socket handler always reads current values without stale closures
-  const activeConvRef   = useRef(null);
-  activeConvRef.current = activeConvId;
+  // null  = not yet determined (connecting…)
+  // true  = WebSocket is open
+  // false = known disconnected — show banner
+  const [wsConnected, setWsConnected] = useState(null);
+
+  const activeConvRef        = useRef(null);
+  activeConvRef.current      = activeConvId;
 
   const loadConversationsRef = useRef(null);
   const loadMessagesRef      = useRef(null);
@@ -68,7 +71,11 @@ export default function RenterMessages() {
       const fetched = res.data?.messages || [];
       setMessages(fetched);
 
-      sendWS('markAsRead', { conversationId: convId });
+      // sendWS returns false when socket is closed → fall back to REST
+      const sent = sendWS('markAsRead', { conversationId: convId });
+      if (!sent) {
+        messageAPI.markAsRead({ conversationId: convId }).catch(() => {});
+      }
 
       setConversations(prev =>
         prev.map(c =>
@@ -97,7 +104,6 @@ export default function RenterMessages() {
   const handleSocketMessage = useCallback((data) => {
     switch (data.action) {
 
-      /* Socket (re)connected → refresh everything */
       case 'ws_connected': {
         console.log('[RenterMessages] WS connected — refreshing data');
         setWsConnected(true);
@@ -115,7 +121,6 @@ export default function RenterMessages() {
         break;
       }
 
-      /* Polling fallback: re-fetch active conv silently */
       case 'ws_poll': {
         const convId = activeConvRef.current;
         if (convId && !convId.startsWith('pending_')) {
@@ -134,23 +139,27 @@ export default function RenterMessages() {
             if (prev.find(m => m._id === msg._id)) return prev;
             return [...prev, msg];
           });
-          sendWS('markAsRead', { conversationId: convId });
+          // Mark as read immediately since the conversation is open
+          const sent = sendWS('markAsRead', { conversationId: convId });
+          if (!sent) {
+            messageAPI.markAsRead({ conversationId: convId }).catch(() => {});
+          }
         } else {
           setConversations(prev =>
             prev.map(c =>
               (c.conversationId || c.id || c._id) === convId
                 ? {
                     ...c,
-                    unreadCount:    (c.unreadCount || 0) + 1,
-                    lastMessage:    msg.message,
-                    lastMessageAt:  msg.createdAt,
+                    unreadCount:   (c.unreadCount || 0) + 1,
+                    lastMessage:   msg.message,
+                    lastMessageAt: msg.createdAt,
                   }
                 : c
             )
           );
         }
 
-        // Bubble conversation to top of list
+        // Bubble conversation to top
         setConversations(prev => {
           const exists = prev.find(c => (c.conversationId || c.id || c._id) === convId);
           if (!exists) {
@@ -225,25 +234,21 @@ export default function RenterMessages() {
 
       default: break;
     }
-  }, []); // Empty deps — uses refs and functional setState, never stale
+  }, []);
 
   /* ── Bootstrap ── */
   useEffect(() => {
-    // Debug listener — remove after confirming WS works
-    const debugListener = (data) => {
-      console.log('[RenterMessages DEBUG] WS event:', data.action || data);
-    };
-
     connectSocket();
-    addSocketListener(debugListener);
     addSocketListener(handleSocketMessage);
 
     // Read location.state before it can change
     const navState = location.state || {};
 
+    // Clear navigation state immediately so a page refresh doesn't re-trigger
+    window.history.replaceState({}, document.title);
+
     loadConversations().then(convs => {
       if (navState.recipientId) {
-        // Try to find existing conversation with this recipient
         const existing = convs.find(c => {
           const otherId = c.otherUser?._id || c.otherUser?.id;
           return String(otherId) === String(navState.recipientId);
@@ -252,8 +257,6 @@ export default function RenterMessages() {
         if (existing) {
           selectConversation(existing);
         } else {
-          // New conversation — set pending recipient and a placeholder activeConvId
-          // so ws_poll and ws_connected handlers know a conv is "active"
           setPendingRecipient({
             _id:           navState.recipientId,
             name:          navState.recipientName || 'Property Owner',
@@ -267,11 +270,7 @@ export default function RenterMessages() {
       }
     });
 
-    // Clear navigation state so a page refresh doesn't re-trigger pending logic
-    window.history.replaceState({}, document.title);
-
     return () => {
-      removeSocketListener(debugListener);
       removeSocketListener(handleSocketMessage);
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -315,7 +314,7 @@ export default function RenterMessages() {
     });
 
     if (!sent) {
-      // WS explicitly disabled — REST fallback
+      // WS disabled or not queueable — use REST immediately
       try {
         const res   = await messageAPI.sendMessage({ receiverId, message: text, attachments, tempId });
         const saved = res.data;
@@ -338,7 +337,6 @@ export default function RenterMessages() {
       setPendingRecipient(null);
       setTimeout(() => {
         loadConversations().then(convs => {
-          // Auto-select the newly created conversation
           const newConv = convs.find(c => {
             const otherId = c.otherUser?._id || c.otherUser?.id;
             return String(otherId) === String(receiverId);
@@ -358,6 +356,7 @@ export default function RenterMessages() {
       || activeConv?.otherUser?.id
       || pendingRecipient?._id;
     if (!receiverId || !activeConvId || activeConvId.startsWith('pending_')) return;
+    // typing is fire-and-forget — no REST fallback needed if WS is down
     sendWS('typing', { conversationId: activeConvId, receiverId, isTyping });
   }, [activeConvId, conversations, pendingRecipient]);
 
@@ -374,7 +373,8 @@ export default function RenterMessages() {
 
   return (
     <RenterLayout>
-      {!wsConnected && (
+      {/* Only render banner when we know for sure the connection is down */}
+      {wsConnected === false && (
         <div style={styles.offlineBanner}>
           ⚠️ Real-time connection unavailable — messages will refresh automatically
         </div>
