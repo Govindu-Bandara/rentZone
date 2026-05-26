@@ -1,0 +1,40 @@
+name: Deploy Lambdas to AWS
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'lambdas/**'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Deploy all Lambda functions
+        run: |
+          for dir in lambdas/*/; do
+            FUNC=$(basename "$dir")
+            echo "Deploying: $FUNC"
+            cd "$dir"
+            zip -r "$FUNC.zip" index.mjs
+            aws s3 cp "$FUNC.zip" s3://${{ secrets.S3_BUCKET_NAME }}/"$FUNC.zip"
+            aws lambda update-function-code \
+              --function-name "$FUNC" \
+              --s3-bucket ${{ secrets.S3_BUCKET_NAME }} \
+              --s3-key "$FUNC.zip" \
+              --region ${{ secrets.AWS_REGION }}
+            cd ../..
+            echo "✓ $FUNC deployed"
+          done
