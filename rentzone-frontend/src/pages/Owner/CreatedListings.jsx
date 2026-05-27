@@ -7,6 +7,9 @@ import toast from 'react-hot-toast';
 
 export default function CreatedListings() {
   const navigate = useNavigate();
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== 'undefined' && window.innerWidth < 768
+  );
   const [listings, setListings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [overallStats, setOverallStats] = useState(null);
@@ -26,6 +29,12 @@ export default function CreatedListings() {
   useEffect(() => {
     loadListings();
   }, [filters, pagination.page]);
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   const loadListings = async () => {
     setLoading(true);
@@ -226,14 +235,13 @@ export default function CreatedListings() {
           gap: 12,
           marginBottom: showFilters ? 16 : 0,
           flexWrap: 'wrap',
-          '@media (max-width: 768px)': { flexDirection: 'column' }
+          flexDirection: isMobile ? 'column' : 'row'
         }}>
           {/* Search */}
           <div style={{
             flex: 1,
-            minWidth: 250,
+            minWidth: isMobile ? '100%' : 250,
             position: 'relative',
-            '@media (max-width: 768px)': { minWidth: '100%' }
           }}>
             <Search size={18} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#94A3B8' }} />
             <input
@@ -402,14 +410,14 @@ export default function CreatedListings() {
               <div key={listing._id} className="card" style={{ padding: 0, overflow: 'hidden' }}>
                 <div style={{
                   display: 'grid',
-                  gridTemplateColumns: window.innerWidth >= 768 ? '240px 1fr auto' : '1fr',
+                  gridTemplateColumns: isMobile ? '1fr' : '240px 1fr auto',
                   gap: 0,
                 }}>
                   {/* Image */}
                   <div style={{
                     position: 'relative',
                     background: '#F1F5F9',
-                    height: window.innerWidth >= 768 ? 'auto' : '200px'
+                    height: isMobile ? '200px' : 'auto'
                   }}>
                     <img
                       src={getListingImageSrc(listing)}
@@ -482,12 +490,12 @@ export default function CreatedListings() {
                   {/* Actions */}
                   <div style={{
                     padding: 20,
-                    borderLeft: window.innerWidth >= 768 ? '1px solid #E2E8F0' : 'none',
-                    borderTop: window.innerWidth < 768 ? '1px solid #E2E8F0' : 'none',
+                    borderLeft: isMobile ? 'none' : '1px solid #E2E8F0',
+                    borderTop: isMobile ? '1px solid #E2E8F0' : 'none',
                     display: 'flex',
-                    flexDirection: window.innerWidth >= 768 ? 'column' : 'row',
+                    flexDirection: isMobile ? 'row' : 'column',
                     gap: 10,
-                    justifyContent: window.innerWidth >= 768 ? 'center' : 'flex-start'
+                    justifyContent: isMobile ? 'flex-start' : 'center'
                   }}>
                     <button
                       onClick={() => navigate(`/owner/properties/${listing._id}/edit`, { state: { listing } })}
@@ -501,7 +509,7 @@ export default function CreatedListings() {
                         color: '#475569',
                         border: 'none',
                         fontSize: 14,
-                        flex: window.innerWidth < 768 ? '1 1 auto' : 'auto'
+                        flex: isMobile ? '1 1 auto' : 'auto'
                       }}
                     >
                       <Edit size={16} />
@@ -519,7 +527,7 @@ export default function CreatedListings() {
                         color: '#991B1B',
                         border: 'none',
                         fontSize: 14,
-                        flex: window.innerWidth < 768 ? '1 1 auto' : 'auto'
+                        flex: isMobile ? '1 1 auto' : 'auto'
                       }}
                     >
                       <Trash2 size={16} />

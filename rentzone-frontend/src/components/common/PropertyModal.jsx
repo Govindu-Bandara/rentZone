@@ -94,6 +94,9 @@ function formatAmenityLabel(amenity) {
 /* ─── Main Modal ──────────────────────────────────────────── */
 export default function PropertyModal({ propertyId, onClose, initialBookingId }) {
   const navigate = useNavigate();
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== 'undefined' && window.innerWidth <= 768
+  );
 
   const [property, setProperty]             = useState(null);
   const [loading, setLoading]               = useState(true);
@@ -199,6 +202,12 @@ export default function PropertyModal({ propertyId, onClose, initialBookingId })
   useEffect(() => {
     document.body.style.overflow = 'hidden';
     return () => { document.body.style.overflow = ''; };
+  }, []);
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
   }, []);
 
   /* Derived property details */
@@ -467,18 +476,18 @@ export default function PropertyModal({ propertyId, onClose, initialBookingId })
     <ModalOverlay onClose={onClose}>
       {/* Close button */}
       <button onClick={onClose} style={{
-        position: 'absolute', top: 14, right: 14, zIndex: 10,
+        position: 'absolute', top: isMobile ? 8 : 14, right: isMobile ? 8 : 14, zIndex: 10,
         background: 'rgba(0,0,0,0.5)', border: 'none', borderRadius: '50%',
         width: 32, height: 32, color: '#fff', cursor: 'pointer',
         display: 'grid', placeItems: 'center', fontSize: 18,
       }}>×</button>
 
-      <div className="property-modal-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: 0, height: '100%', overflow: 'hidden' }}>
+      <div className="property-modal-grid" style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 380px', gap: 0, height: '100%', overflow: 'hidden' }}>
 
         {/* ── LEFT: Property Info ──────────────────────────────── */}
         <div className="property-modal-main" style={{ overflowY: 'auto', borderRight: '1px solid #E2E8F0' }}>
           {/* Image */}
-          <div className="property-modal-hero" style={{ position: 'relative', height: 260, background: '#0F172A', overflow: 'hidden' }}>
+          <div className="property-modal-hero" style={{ position: 'relative', height: isMobile ? 220 : 260, background: '#0F172A', overflow: 'hidden' }}>
             <img src={mainImage} alt={property.title} style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.9 }} />
 
             {/* Badges */}
@@ -522,7 +531,7 @@ export default function PropertyModal({ propertyId, onClose, initialBookingId })
             </p>
 
             {/* Stats */}
-            <div className="property-modal-stats" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 18 }}>
+            <div className="property-modal-stats" style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: 10, marginBottom: 18 }}>
               {[
                 { label: 'Bedrooms',  value: details.bedrooms },
                 { label: 'Bathrooms', value: details.bathrooms },
@@ -570,7 +579,7 @@ export default function PropertyModal({ propertyId, onClose, initialBookingId })
             {/* Owner info */}
             <div className="property-modal-owner" style={{ marginTop: 18, padding: '14px', background: '#F8FAFC', borderRadius: 10, border: '1px solid #E2E8F0' }}>
               <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 8, color: '#1E293B' }}>Property Owner</h3>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: isMobile ? 'wrap' : 'nowrap' }}>
                 <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'linear-gradient(135deg,#2563EB,#14B8A6)', display: 'grid', placeItems: 'center', color: '#fff', fontWeight: 700, fontSize: 16, overflow: 'hidden', flexShrink: 0 }}>
                   {property?.owner?.profileImage ? (
                     <img src={property.owner.profileImage} alt={details.ownerName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -610,7 +619,7 @@ export default function PropertyModal({ propertyId, onClose, initialBookingId })
                           propertyTitle: property?.title,
                         },
                       });
-                    }} style={{ marginLeft: 12, background: '#2563EB', color: '#fff', border: 'none', padding: '8px 12px', borderRadius: 8, cursor: 'pointer', fontWeight: 600 }}>
+                    }} style={{ marginLeft: isMobile ? 0 : 12, background: '#2563EB', color: '#fff', border: 'none', padding: '8px 12px', borderRadius: 8, cursor: 'pointer', fontWeight: 600, width: isMobile ? '100%' : 'auto' }}>
                       Message Owner
                     </button>
                   </div>
@@ -650,7 +659,7 @@ export default function PropertyModal({ propertyId, onClose, initialBookingId })
 
                   <div>
                     <label style={{ fontSize: 12, color: '#64748B', fontWeight: 500, display: 'block', marginBottom: 4 }}>Lease Duration *</label>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 8 }}>
                       <input type="number" min={1} className="form-input" value={requestForm.duration}
                         onChange={e => setRequestForm(f => ({ ...f, duration: e.target.value }))}
                         style={{ fontSize: 13 }}
@@ -848,7 +857,7 @@ export default function PropertyModal({ propertyId, onClose, initialBookingId })
                       style={{ fontSize: 13, letterSpacing: '0.05em' }}
                     />
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 10 }}>
                     <div>
                       <label style={{ fontSize: 12, color: '#64748B', fontWeight: 500, display: 'block', marginBottom: 4 }}>Expiry Date *</label>
                       <input className="form-input" placeholder="MM/YY"
@@ -1044,7 +1053,7 @@ export default function PropertyModal({ propertyId, onClose, initialBookingId })
                   </div>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 10 }}>
                   <ReceiptDownloadButton
                     targetId="receipt-content"
                     bookingCode={currentBooking?.bookingCode}
@@ -1071,7 +1080,7 @@ export default function PropertyModal({ propertyId, onClose, initialBookingId })
           position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
           display: 'grid', placeItems: 'center', zIndex: 1300, padding: 20,
         }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 16, padding: 12, width: 'min(1000px,96vw)', height: 'min(90vh, 800px)' }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: isMobile ? 12 : 16, padding: isMobile ? 8 : 12, width: 'min(1000px,96vw)', height: isMobile ? '94vh' : 'min(90vh, 800px)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
               <strong style={{ fontSize: 15 }}>Property Location</strong>
               <button onClick={() => setShowMap(false)} style={{ background: '#F1F5F9', border: 'none', borderRadius: 6, padding: '6px 12px', cursor: 'pointer', fontSize: 13 }}>Close</button>

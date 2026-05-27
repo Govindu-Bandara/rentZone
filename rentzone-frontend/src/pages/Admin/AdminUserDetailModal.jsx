@@ -107,6 +107,9 @@ function getInitials(u) {
 }
 
 export default function AdminUserDetailModal({ user, onClose, onActionComplete }) {
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== 'undefined' && window.innerWidth <= 768
+  );
   const [actionBusy,     setActionBusy    ] = useState('');
   const [confirmAction,  setConfirmAction ] = useState(null);
   const [reason,         setReason        ] = useState('');
@@ -141,6 +144,12 @@ export default function AdminUserDetailModal({ user, onClose, onActionComplete }
       .finally(() => setLoading(false));
   }, [user?._id]);
 
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
   if (!user) return null;
 
   // ── Loading state ── show a spinner that already has the correct name/photo
@@ -164,7 +173,7 @@ export default function AdminUserDetailModal({ user, onClose, onActionComplete }
           {/* Header skeleton — uses real photo/initials immediately */}
           <div style={{
             background: 'linear-gradient(135deg,#1E293B 0%,#334155 100%)',
-            padding: '24px 28px',
+            padding: isMobile ? '16px' : '24px 28px',
             display: 'flex', alignItems: 'center', gap: 16
           }}>
             <div style={{
@@ -314,14 +323,14 @@ export default function AdminUserDetailModal({ user, onClose, onActionComplete }
           </button>
         </div>
 
-        <div style={{ padding: 28 }}>
+        <div style={{ padding: isMobile ? 16 : 28 }}>
           {successMsg && (
             <div style={{ background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: 10, padding: '10px 14px', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 8, color: '#065F46', fontSize: 14, fontWeight: 500 }}>
               <CheckCircle size={16} /> {successMsg}
             </div>
           )}
 
-          <div style={{ display: 'grid', gridTemplateColumns: displayUser.role === 'owner' ? '1fr 1fr' : '1fr', gap: 24 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: displayUser.role === 'owner' && !isMobile ? '1fr 1fr' : '1fr', gap: 24 }}>
             {/* ── Left Column ── */}
             <div>
               <h3 style={{ fontSize: 14, fontWeight: 700, color: '#1E293B', marginBottom: 4, paddingBottom: 10, borderBottom: '2px solid #F1F5F9' }}>
@@ -381,7 +390,7 @@ export default function AdminUserDetailModal({ user, onClose, onActionComplete }
                   Review the NIC images below to verify this owner's identity. Click any image to enlarge.
                 </p>
 
-                <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
+                <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexDirection: isMobile ? 'column' : 'row' }}>
                   <NICImage label="NIC Front" src={displayUser.nicDetails?.frontImageUrl} />
                   <NICImage label="NIC Back"  src={displayUser.nicDetails?.backImageUrl}  />
                 </div>
@@ -458,7 +467,7 @@ export default function AdminUserDetailModal({ user, onClose, onActionComplete }
                   onChange={e => setReason(e.target.value)}
                   style={{ width: '100%', padding: 8, border: '1px solid #FECACA', borderRadius: 6, fontSize: 13, resize: 'none', height: 60, fontFamily: 'inherit', marginBottom: 10, boxSizing: 'border-box' }}
                 />
-                <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ display: 'flex', gap: 8, flexDirection: isMobile ? 'column-reverse' : 'row' }}>
                   <button onClick={() => { setConfirmAction(null); setReason(''); }}
                     style={{ flex: 1, padding: '8px', borderRadius: 8, border: '1px solid #E2E8F0', background: '#fff', color: '#475569', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
                     Cancel

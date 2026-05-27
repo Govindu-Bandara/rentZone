@@ -45,7 +45,7 @@ function timeAgo(dateStr) {
 }
 
 /* ─── Notification Card ── */
-function NotificationCard({ notification, onMarkRead, onDelete }) {
+function NotificationCard({ notification, onMarkRead, onDelete, isMobile }) {
   const cfg = TYPE_CONFIG[notification.type] || DEFAULT_TYPE;
   const isUnread = !notification.isRead;
 
@@ -53,7 +53,7 @@ function NotificationCard({ notification, onMarkRead, onDelete }) {
     <div
       onClick={() => onMarkRead(notification)}
       style={{
-        display: 'flex', gap: 14, padding: '14px 18px',
+        display: 'flex', gap: isMobile ? 10 : 14, padding: isMobile ? '12px 12px' : '14px 18px',
         background: isUnread ? '#FAFBFF' : '#fff',
         borderBottom: '1px solid #F1F5F9',
         cursor: notification.actionUrl ? 'pointer' : 'default',
@@ -74,9 +74,9 @@ function NotificationCard({ notification, onMarkRead, onDelete }) {
 
       {/* Icon badge */}
       <div style={{
-        width: 44, height: 44, borderRadius: 12, flexShrink: 0,
+        width: isMobile ? 38 : 44, height: isMobile ? 38 : 44, borderRadius: 12, flexShrink: 0,
         background: cfg.bg, border: `1px solid ${cfg.border}`,
-        display: 'grid', placeItems: 'center', fontSize: 20,
+        display: 'grid', placeItems: 'center', fontSize: isMobile ? 17 : 20,
         marginLeft: isUnread ? 6 : 0,
       }}>
         {cfg.icon}
@@ -85,14 +85,14 @@ function NotificationCard({ notification, onMarkRead, onDelete }) {
       {/* Content */}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 3 }}>
-          <span style={{ fontSize: 14, fontWeight: isUnread ? 700 : 600, color: '#1E293B', lineHeight: 1.3 }}>
+          <span style={{ fontSize: isMobile ? 13 : 14, fontWeight: isUnread ? 700 : 600, color: '#1E293B', lineHeight: 1.3 }}>
             {notification.title}
           </span>
           <span style={{ fontSize: 11, color: '#94A3B8', whiteSpace: 'nowrap', flexShrink: 0 }}>
             {timeAgo(notification.createdAt)}
           </span>
         </div>
-        <p style={{ fontSize: 13, color: '#475569', lineHeight: 1.5, margin: 0 }}>
+        <p style={{ fontSize: isMobile ? 12 : 13, color: '#475569', lineHeight: 1.5, margin: 0 }}>
           {notification.message}
         </p>
         {notification.data?.bookingCode && (
@@ -148,6 +148,9 @@ function EmptyState({ category }) {
 /* ─── Main content ── */
 function NotificationsContent() {
   const navigate = useNavigate();
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== 'undefined' && window.innerWidth <= 768
+  );
   const [notifications, setNotifications]     = useState([]);
   const [loading, setLoading]                 = useState(true);
   const [activeCategory, setActiveCategory]   = useState('all');
@@ -170,6 +173,12 @@ function NotificationsContent() {
   }, [activeCategory]);
 
   useEffect(() => { fetchNotifications(); }, [fetchNotifications]);
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   const handleMarkRead = async (notification) => {
     if (!notification.isRead) {
@@ -221,6 +230,8 @@ function NotificationsContent() {
               border: '1px solid #BFDBFE', borderRadius: 8,
               padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer',
               display: 'flex', alignItems: 'center', gap: 6,
+              width: isMobile ? '100%' : 'auto',
+              justifyContent: isMobile ? 'center' : 'flex-start',
             }}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -235,6 +246,8 @@ function NotificationsContent() {
       <div style={{
         display: 'flex', gap: 0, marginBottom: 20,
         borderBottom: '1px solid #E2E8F0',
+        overflowX: isMobile ? 'auto' : 'visible',
+        scrollbarWidth: 'thin',
       }}>
         {CATEGORIES.map(cat => {
           const count = countFor(cat.key);
@@ -245,13 +258,14 @@ function NotificationsContent() {
               onClick={() => setActiveCategory(cat.key)}
               style={{
                 background: 'none', border: 'none', cursor: 'pointer',
-                padding: '10px 18px',
+                padding: isMobile ? '10px 12px' : '10px 18px',
                 fontSize: 13, fontWeight: isActive ? 700 : 500,
                 color: isActive ? '#2563EB' : '#64748B',
                 borderBottom: `2px solid ${isActive ? '#2563EB' : 'transparent'}`,
                 marginBottom: -1,
                 display: 'flex', alignItems: 'center', gap: 6,
                 transition: 'all 0.15s', whiteSpace: 'nowrap',
+                flexShrink: 0,
               }}
             >
               {cat.label}
@@ -289,6 +303,7 @@ function NotificationsContent() {
               notification={n}
               onMarkRead={handleMarkRead}
               onDelete={handleDelete}
+              isMobile={isMobile}
             />
           ))
         )}

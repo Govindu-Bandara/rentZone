@@ -16,6 +16,9 @@ function ImageCropModal({ imageSrc, onConfirm, onCancel }) {
   const [rotation, setRotation] = useState(0);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [dragging, setDragging] = useState(false);
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== 'undefined' && window.innerWidth <= 640
+  );
   const dragStart = useRef(null);
   const imageRef = useRef(null);
   const SIZE = 320; // crop circle diameter in px
@@ -66,6 +69,12 @@ function ImageCropModal({ imageSrc, onConfirm, onCancel }) {
   }, [zoom, rotation, offset]);
 
   useEffect(() => { draw(); }, [draw]);
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth <= 640);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   // Drag handlers
   const onMouseDown = (e) => {
@@ -136,8 +145,8 @@ function ImageCropModal({ imageSrc, onConfirm, onCancel }) {
     }}>
       <div style={{
         background: '#0F172A',
-        borderRadius: 20,
-        padding: 28,
+        borderRadius: isMobile ? 14 : 20,
+        padding: isMobile ? 14 : 28,
         width: '100%', maxWidth: 420,
         boxShadow: '0 30px 60px rgba(0,0,0,0.5)',
         border: '1px solid rgba(255,255,255,0.08)',
@@ -261,6 +270,9 @@ const UserProfile = () => {
   const [showCurrentPw, setShowCurrentPw] = useState(false);
   const [showNewPw, setShowNewPw] = useState(false);
   const [showConfirmPw, setShowConfirmPw] = useState(false);
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== 'undefined' && window.innerWidth <= 768
+  );
   const [previewImage, setPreviewImage] = useState(null);
 
   // Crop modal state
@@ -278,6 +290,12 @@ const UserProfile = () => {
   });
 
   useEffect(() => { fetchProfile(); }, []);
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   const fetchProfile = async () => {
     try {
@@ -476,7 +494,7 @@ const UserProfile = () => {
   }
 
   return (
-    <div style={{ maxWidth: 720, margin: '0 auto', padding: '0 0 40px' }}>
+    <div style={{ maxWidth: 720, margin: '0 auto', padding: isMobile ? '0 0 24px' : '0 0 40px' }}>
 
       {/* ── Back button ── */}
       <button
@@ -510,7 +528,7 @@ const UserProfile = () => {
       <div style={{
         background: 'linear-gradient(135deg, #2563EB 0%, #14B8A6 100%)',
         borderRadius: 20,
-        padding: '36px 32px',
+        padding: isMobile ? '20px 16px' : '36px 32px',
         marginBottom: 24,
         position: 'relative',
         overflow: 'hidden',
@@ -521,7 +539,7 @@ const UserProfile = () => {
           background: 'rgba(255,255,255,0.08)',
         }} />
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 14 : 24, flexWrap: 'wrap' }}>
           {/* Avatar */}
           <label
             htmlFor="avatar-upload"
@@ -568,7 +586,7 @@ const UserProfile = () => {
 
           {/* Name + role */}
           <div style={{ flex: 1 }}>
-            <h1 style={{ fontSize: 24, fontWeight: 700, color: 'white', marginBottom: 4 }}>
+            <h1 style={{ fontSize: isMobile ? 20 : 24, fontWeight: 700, color: 'white', marginBottom: 4 }}>
               {profile?.firstName} {profile?.lastName}
             </h1>
             <span style={{
@@ -589,7 +607,7 @@ const UserProfile = () => {
           </div>
 
           {/* Action buttons */}
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', width: isMobile ? '100%' : 'auto' }}>
             {editMode ? (
               <>
                 <button onClick={handleCancel} style={btnStyle('ghost')}>
@@ -633,7 +651,7 @@ const UserProfile = () => {
       )}
 
       {/* ── Info card ── */}
-      <div style={cardStyle}>
+      <div style={{ ...cardStyle, padding: isMobile ? '18px 14px' : cardStyle.padding }}>
         <h2 style={sectionTitle}>Personal Information</h2>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 20 }}>
           <Field label="First Name" icon={<User size={15} />} value={formData.firstName} editMode={editMode} name="firstName"
@@ -649,7 +667,7 @@ const UserProfile = () => {
 
       {/* ── Password card ── */}
       {editMode && (
-        <div style={{ ...cardStyle, marginTop: 16 }}>
+        <div style={{ ...cardStyle, marginTop: 16, padding: isMobile ? '18px 14px' : cardStyle.padding }}>
           <h2 style={sectionTitle}>
             <Lock size={16} style={{ display: 'inline', marginRight: 6 }} />
             Change Password
@@ -672,7 +690,7 @@ const UserProfile = () => {
       )}
 
       {/* ── Account info card ── */}
-      <div style={{ ...cardStyle, marginTop: 16 }}>
+      <div style={{ ...cardStyle, marginTop: 16, padding: isMobile ? '18px 14px' : cardStyle.padding }}>
         <h2 style={sectionTitle}>Account Details</h2>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
           {[

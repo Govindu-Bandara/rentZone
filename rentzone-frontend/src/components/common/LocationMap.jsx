@@ -69,6 +69,9 @@ export default function LocationMap({
   const [mapCenter, setMapCenter] = useState(SRI_LANKA_CENTER);
   const [zoom, setZoom] = useState(DEFAULT_ZOOM);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== 'undefined' && window.innerWidth <= 768
+  );
   const [localMarkerPos, setLocalMarkerPos] = useState(markerPosition || SRI_LANKA_CENTER);
   const [gettingDirections, setGettingDirections] = useState(false);
   const mapContainerRef = useRef(null);
@@ -230,6 +233,12 @@ export default function LocationMap({
     };
   }, []);
 
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
   const handleMapClick = (e) => {
     if (isRenterMode) return; // read-only in renter mode
     const { lat, lng } = e.latlng;
@@ -306,12 +315,13 @@ export default function LocationMap({
           gap: 12, 
           marginBottom: isFullscreen ? 16 : 16,
           flexWrap: 'wrap',
+          flexDirection: isMobile ? 'column' : 'row',
           padding: isFullscreen ? '16px 20px' : '0',
           background: isFullscreen ? '#fff' : 'transparent',
           borderBottom: isFullscreen ? '1px solid #E2E8F0' : 'none',
           zIndex: 1001
         }}>
-          <div style={{ flex: 1, minWidth: 250, display: 'flex', gap: 8 }}>
+          <div style={{ flex: 1, minWidth: 0, display: 'flex', gap: 8, width: '100%' }}>
             <input
               type="text"
               value={searchQuery}
@@ -334,7 +344,7 @@ export default function LocationMap({
               style={{
                 background: '#14B8A6',
                 color: '#fff',
-                padding: '10px 20px',
+                padding: isMobile ? '10px 14px' : '10px 20px',
                 fontSize: 14,
                 fontWeight: 500
               }}
@@ -355,7 +365,9 @@ export default function LocationMap({
               color: '#475569',
               padding: '10px 16px',
               fontSize: 14,
-              fontWeight: 500
+              fontWeight: 500,
+              width: isMobile ? '100%' : 'auto',
+              justifyContent: isMobile ? 'center' : 'flex-start'
             }}
           >
             <MapPin size={16} />
@@ -369,6 +381,7 @@ export default function LocationMap({
         <div style={{
           display: 'flex',
           gap: 8,
+          flexWrap: 'wrap',
           padding: isFullscreen ? '16px 20px' : '8px 0',
           background: isFullscreen ? '#fff' : 'transparent',
           borderBottom: isFullscreen ? '1px solid #E2E8F0' : 'none',
@@ -406,7 +419,8 @@ export default function LocationMap({
               borderRadius: 8,
               fontSize: 12,
               color: '#0369A1',
-              flex: 1
+              flex: 1,
+              minWidth: isMobile ? '100%' : 0
             }}>
               <MapPin size={14} />
               {address}
@@ -421,7 +435,7 @@ export default function LocationMap({
         borderRadius: isFullscreen ? 0 : 12, 
         overflow: 'hidden', 
         border: isFullscreen ? 'none' : '1px solid #E2E8F0',
-        height: isFullscreen ? 'auto' : 400,
+        height: isFullscreen ? 'auto' : (isMobile ? 320 : 400),
         flex: isFullscreen ? 1 : 'none',
         display: 'flex'
       }}>
@@ -472,7 +486,7 @@ export default function LocationMap({
             background: '#2563EB',
             border: 'none',
             borderRadius: 10,
-            padding: 12,
+            padding: isMobile ? 9 : 12,
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',

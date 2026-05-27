@@ -90,7 +90,7 @@ const tyStyles = {
 };
 
 /* ── Message bubble ── */
-function MessageBubble({ msg, isMine, showAvatar, otherUser }) {
+function MessageBubble({ msg, isMine, showAvatar, otherUser, isMobile }) {
   const initials = (() => {
     if (!otherUser) return '?';
     const f = otherUser.firstName || otherUser.name || '';
@@ -119,7 +119,7 @@ function MessageBubble({ msg, isMine, showAvatar, otherUser }) {
       )}
 
       <div style={{
-        maxWidth: '68%',
+        maxWidth: isMobile ? '84%' : '68%',
         display: 'flex',
         flexDirection: 'column',
         alignItems: isMine ? 'flex-end' : 'flex-start',
@@ -131,7 +131,7 @@ function MessageBubble({ msg, isMine, showAvatar, otherUser }) {
             ? (msg.status === 'failed' ? '#FEE2E2' : 'linear-gradient(135deg,#2563EB,#1D4ED8)')
             : '#F1F5F9',
           color: isMine ? '#fff' : '#1E293B',
-          fontSize: 14,
+          fontSize: isMobile ? 13 : 14,
           lineHeight: 1.5,
           wordBreak: 'break-word',
           boxShadow: isMine
@@ -178,7 +178,7 @@ function DayDivider({ label }) {
 }
 
 /* ── Header ── */
-function ChatHeader({ otherUser, propertyTitle }) {
+function ChatHeader({ otherUser, propertyTitle, isMobile }) {
   const name = [otherUser?.firstName || otherUser?.name, otherUser?.lastName].filter(Boolean).join(' ') || 'Unknown';
   const initials = (() => {
     const f = otherUser?.firstName || otherUser?.name || '';
@@ -187,7 +187,7 @@ function ChatHeader({ otherUser, propertyTitle }) {
   })();
 
   return (
-    <div style={hdStyles.header}>
+    <div style={{ ...hdStyles.header, padding: isMobile ? '12px 12px' : hdStyles.header.padding }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <div>
           {otherUser?.profileImage ? (
@@ -199,7 +199,7 @@ function ChatHeader({ otherUser, propertyTitle }) {
           )}
         </div>
         <div>
-          <div style={{ fontWeight: 700, fontSize: 15, color: '#1E293B' }}>{name}</div>
+          <div style={{ fontWeight: 700, fontSize: isMobile ? 14 : 15, color: '#1E293B' }}>{name}</div>
           <div style={{ fontSize: 12, color: '#94A3B8' }}>
             {propertyTitle && <span style={{ color: '#CBD5E1' }}> · {propertyTitle}</span>}
           </div>
@@ -225,7 +225,7 @@ const hdStyles = {
 };
 
 /* ── Input bar ── */
-function MessageInput({ onSend, onTyping, disabled }) {
+function MessageInput({ onSend, onTyping, disabled, isMobile }) {
   const [text, setText] = useState('');
   const typingTimerRef = useRef(null);
   const isTypingRef = useRef(false);
@@ -273,16 +273,16 @@ function MessageInput({ onSend, onTyping, disabled }) {
   };
 
   return (
-    <div style={inStyles.bar}>
+    <div style={{ ...inStyles.bar, padding: isMobile ? '10px 10px' : inStyles.bar.padding, gap: isMobile ? 6 : 8 }}>
       {/* Emoji stub */}
-      <button style={inStyles.iconBtn} title="Emoji (coming soon)">
+      <button style={{ ...inStyles.iconBtn, display: isMobile ? 'none' : 'flex' }} title="Emoji (coming soon)">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2">
           <circle cx="12" cy="12" r="10"/><path d="M8 13s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/>
         </svg>
       </button>
 
       {/* Attachment stub */}
-      <button style={inStyles.iconBtn} title="Attach file (coming soon)">
+      <button style={{ ...inStyles.iconBtn, display: isMobile ? 'none' : 'flex' }} title="Attach file (coming soon)">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2">
           <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
         </svg>
@@ -290,7 +290,7 @@ function MessageInput({ onSend, onTyping, disabled }) {
 
       <textarea
         ref={textareaRef}
-        style={inStyles.textarea}
+        style={{ ...inStyles.textarea, fontSize: isMobile ? 13 : 14, padding: isMobile ? '8px 12px' : inStyles.textarea.padding }}
         placeholder="Type a message… (Enter to send, Shift+Enter for newline)"
         value={text}
         onChange={handleChange}
@@ -302,6 +302,8 @@ function MessageInput({ onSend, onTyping, disabled }) {
       <button
         style={{
           ...inStyles.sendBtn,
+          width: isMobile ? 36 : 40,
+          height: isMobile ? 36 : 40,
           background: text.trim() ? 'linear-gradient(135deg,#2563EB,#1D4ED8)' : '#E2E8F0',
           cursor: text.trim() && !disabled ? 'pointer' : 'not-allowed',
         }}
@@ -385,6 +387,15 @@ export default function ChatPanel({
 }) {
   const bottomRef = useRef(null);
   const containerRef = useRef(null);
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== 'undefined' && window.innerWidth <= 768
+  );
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -405,11 +416,11 @@ export default function ChatPanel({
     <div style={cpStyles.wrapper}>
       {/* Header */}
       {otherUser && (
-        <ChatHeader otherUser={otherUser} propertyTitle={propertyTitle} />
+        <ChatHeader otherUser={otherUser} propertyTitle={propertyTitle} isMobile={isMobile} />
       )}
 
       {/* Messages area */}
-      <div ref={containerRef} style={cpStyles.messages}>
+      <div ref={containerRef} style={{ ...cpStyles.messages, padding: isMobile ? '10px 10px' : cpStyles.messages.padding }}>
         {loading ? (
           <div style={cpStyles.center}>
             <div style={cpStyles.spinner} />
@@ -439,6 +450,7 @@ export default function ChatPanel({
                     isMine={isMine}
                     showAvatar={!isMine && isLastInGroup}
                     otherUser={otherUser}
+                    isMobile={isMobile}
                   />
                 </div>
               );
@@ -461,6 +473,7 @@ export default function ChatPanel({
         onSend={onSend}
         onTyping={onTyping}
         disabled={loading}
+        isMobile={isMobile}
       />
 
       <style>{`

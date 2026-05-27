@@ -4,7 +4,7 @@
  * Shared between RenterMessages and OwnerMessages.
  */
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 function formatTime(dateStr) {
   if (!dateStr) return '';
@@ -56,6 +56,16 @@ export default function ConversationList({
   onSelect,
   pendingRecipient,
 }) {
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== 'undefined' && window.innerWidth <= 768
+  );
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
   const sorted = useMemo(() => {
     return [...conversations].sort(
       (a, b) => new Date(b.lastMessageAt || 0) - new Date(a.lastMessageAt || 0)
@@ -67,9 +77,9 @@ export default function ConversationList({
   return (
     <div style={styles.container}>
       {/* Header */}
-      <div style={styles.header}>
+      <div style={{ ...styles.header, padding: isMobile ? '14px 12px 10px' : styles.header.padding }}>
         <div style={styles.headerLeft}>
-          <span style={styles.headerTitle}>Messages</span>
+          <span style={{ ...styles.headerTitle, fontSize: isMobile ? 16 : 17 }}>Messages</span>
           {totalUnread > 0 && (
             <span style={styles.totalBadge}>{totalUnread}</span>
           )}
@@ -77,12 +87,12 @@ export default function ConversationList({
       </div>
 
       {/* Search bar (UI only) */}
-      <div style={styles.searchWrap}>
+      <div style={{ ...styles.searchWrap, margin: isMobile ? '8px 10px' : styles.searchWrap.margin }}>
         <svg style={styles.searchIcon} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2">
           <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
         </svg>
         <input
-          style={styles.searchInput}
+          style={{ ...styles.searchInput, fontSize: isMobile ? 12 : 13 }}
           placeholder="Search conversations…"
           readOnly
         />
@@ -90,7 +100,7 @@ export default function ConversationList({
 
       {/* Pending (pre-conversation) recipient */}
       {pendingRecipient && (
-        <div style={{ ...styles.convItem, ...styles.convItemActive }}>
+        <div style={{ ...styles.convItem, ...styles.convItemActive, padding: isMobile ? '8px 12px' : styles.convItem.padding }}>
           <div style={{ ...styles.avatar, background: avatarColor(pendingRecipient._id) }}>
             {getInitials({ firstName: pendingRecipient.name })}
           </div>
@@ -135,6 +145,7 @@ export default function ConversationList({
                 key={id}
                 style={{
                   ...styles.convItem,
+                  padding: isMobile ? '8px 12px' : styles.convItem.padding,
                   ...(isActive ? styles.convItemActive : {}),
                 }}
                 onClick={() => onSelect(conv)}
@@ -151,13 +162,13 @@ export default function ConversationList({
 
                 <div style={styles.convInfo}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ ...styles.convName, fontWeight: unread > 0 ? 700 : 500 }}>
+                    <span style={{ ...styles.convName, fontWeight: unread > 0 ? 700 : 500, fontSize: isMobile ? 13 : 14 }}>
                       {name}
                     </span>
-                    <span style={styles.convTime}>{formatTime(conv.lastMessageAt)}</span>
+                    <span style={{ ...styles.convTime, fontSize: isMobile ? 10 : 11 }}>{formatTime(conv.lastMessageAt)}</span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 2 }}>
-                    <span style={{ ...styles.convLast, fontWeight: unread > 0 ? 600 : 400, color: unread > 0 ? '#475569' : '#94A3B8' }}>
+                    <span style={{ ...styles.convLast, fontSize: isMobile ? 11 : 12, fontWeight: unread > 0 ? 600 : 400, color: unread > 0 ? '#475569' : '#94A3B8' }}>
                       {preview}
                     </span>
                     {unread > 0 && (

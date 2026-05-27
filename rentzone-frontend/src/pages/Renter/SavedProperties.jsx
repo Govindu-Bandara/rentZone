@@ -7,6 +7,15 @@ import { favoriteAPI } from '../../services/api';
 function SavedPropertyCard({ property, onRemove, onOpenModal }) {
   const [removing, setRemoving] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== 'undefined' && window.innerWidth <= 640
+  );
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth <= 640);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   const typeLabel = { apartment: 'Apartment', house: 'House', boarding: 'Boarding Place', shortStay: 'Short-Stay Rental' }[property.propertyType] || property.propertyType;
   const typeColor = { apartment: 'badge-blue', house: 'badge-teal', boarding: 'badge-amber', shortStay: 'badge-gray' }[property.propertyType] || 'badge-blue';
@@ -145,8 +154,9 @@ function SavedPropertyCard({ property, onRemove, onOpenModal }) {
               e.stopPropagation();
             }}
             style={{
+              width: isMobile ? '100%' : 'min(400px,96vw)',
               maxWidth: '400px',
-              padding: '24px',
+              padding: isMobile ? '16px' : '24px',
               textAlign: 'center',
               pointerEvents: 'auto',
             }}
@@ -173,7 +183,7 @@ function SavedPropertyCard({ property, onRemove, onOpenModal }) {
             <p style={{ fontSize: '14px', color: '#6B7280', marginBottom: '20px' }}>
               Are you sure you want to remove "{property.title}" from your saved properties?
             </p>
-            <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexDirection: isMobile ? 'column-reverse' : 'row' }}>
               <button
                 type="button"
                 className="btn btn-secondary"

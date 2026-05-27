@@ -22,6 +22,9 @@ import ConversationList from '../../components/messaging/ConversationList';
 export default function RenterMessages() {
   const { user }    = useAuth();
   const location    = useLocation();
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== 'undefined' && window.innerWidth <= 768
+  );
 
   const [conversations, setConversations]       = useState([]);
   const [activeConvId, setActiveConvId]         = useState(null);
@@ -249,6 +252,12 @@ export default function RenterMessages() {
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
   /* ── Send a message ── */
   const sendMessage = useCallback(async (text, attachments = []) => {
     if (!text.trim() && attachments.length === 0) return;
@@ -345,7 +354,7 @@ export default function RenterMessages() {
 
   return (
     <RenterLayout>
-      <div className="messages-shell renter-messages-shell" style={styles.wrapper}>
+      <div className="messages-shell renter-messages-shell" style={styles.wrapper(isMobile)}>
         <ConversationList
           conversations={conversations}
           activeConvId={activeConvId}
@@ -387,16 +396,16 @@ function EmptyInbox() {
 }
 
 const styles = {
-  wrapper: {
+  wrapper: (isMobile) => ({
     display:             'grid',
-    gridTemplateColumns: '320px 1fr',
-    height:              'calc(100vh - 80px)',
+    gridTemplateColumns: isMobile ? '1fr' : '320px 1fr',
+    height:              isMobile ? 'calc(100vh - 110px)' : 'calc(100vh - 80px)',
     background:          '#fff',
     borderRadius:        16,
     overflow:            'hidden',
     border:              '1px solid #E2E8F0',
     boxShadow:           '0 4px 24px rgba(0,0,0,0.06)',
-  },
+  }),
   emptyInbox: {
     display:        'flex',
     flexDirection:  'column',

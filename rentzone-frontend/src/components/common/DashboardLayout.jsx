@@ -30,6 +30,9 @@ export default function DashboardLayout({ children, navItems = [] }) {
   const location = useLocation();
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== 'undefined' && window.innerWidth <= 768
+  );
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   /* ── Profile popover ── */
@@ -80,6 +83,12 @@ export default function DashboardLayout({ children, navItems = [] }) {
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
   }, []);
 
   /* ── Notification actions ── */
@@ -196,7 +205,7 @@ export default function DashboardLayout({ children, navItems = [] }) {
               {showNotifications && (
                 <div style={{
                   position: 'absolute', top: 'calc(100% + 10px)', right: 0,
-                  width: 340, background: 'white',
+                  width: isMobile ? 'min(92vw, 340px)' : 340, background: 'white',
                   borderRadius: 14, border: '1px solid #E2E8F0',
                   boxShadow: '0 20px 40px rgba(0,0,0,0.12)',
                   zIndex: 1000, overflow: 'hidden',
@@ -328,7 +337,7 @@ export default function DashboardLayout({ children, navItems = [] }) {
               {showProfile && (
                 <div style={{
                   position: 'absolute', top: 'calc(100% + 10px)', right: 0,
-                  width: 260, background: 'white',
+                  width: isMobile ? 'min(92vw, 260px)' : 260, background: 'white',
                   borderRadius: 14, border: '1px solid #E2E8F0',
                   boxShadow: '0 20px 40px rgba(0,0,0,0.12)',
                   zIndex: 1000, overflow: 'hidden',
@@ -460,7 +469,7 @@ export default function DashboardLayout({ children, navItems = [] }) {
             position: 'fixed', top: '50%', left: '50%',
             transform: 'translate(-50%, -50%)',
             background: 'white', borderRadius: 16, padding: 28,
-            width: '100%', maxWidth: 360,
+            width: isMobile ? '92vw' : '100%', maxWidth: 360,
             zIndex: 2000,
             boxShadow: '0 25px 50px rgba(0,0,0,0.25)',
           }}>

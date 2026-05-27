@@ -57,6 +57,9 @@ function InfoRow({ label, value }) {
 export default function PropertyDetails() {
   const { id } = useParams();
   const [searchParams] = useSearchParams();
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== 'undefined' && window.innerWidth <= 768
+  );
 
   const [property, setProperty] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -150,6 +153,12 @@ export default function PropertyDetails() {
 
     setActiveStep(1);
   }, [currentBooking]);
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   const details = useMemo(() => {
     const images = property?.images || [];
@@ -310,22 +319,22 @@ export default function PropertyDetails() {
 
       <Stepper activeStep={activeStep} />
 
-      <div className="property-details-layout" style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 18 }}>
+      <div className="property-details-layout" style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '2fr 1fr', gap: 18 }}>
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-          <img src={details.mainImage} alt={property.title} style={{ width: '100%', height: 300, objectFit: 'cover' }} />
+          <img src={details.mainImage} alt={property.title} style={{ width: '100%', height: isMobile ? 220 : 300, objectFit: 'cover' }} />
           <div style={{ padding: 16 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start', marginBottom: 10 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start', marginBottom: 10, flexDirection: isMobile ? 'column' : 'row' }}>
               <div>
                 <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 4 }}>{property.title}</h1>
                 <p style={{ color: 'var(--text-secondary)', fontSize: 14 }}>{details.address}</p>
               </div>
-              <div style={{ fontSize: 26, fontWeight: 800, color: 'var(--primary)', lineHeight: 1 }}>
+              <div style={{ fontSize: isMobile ? 22 : 26, fontWeight: 800, color: 'var(--primary)', lineHeight: 1 }}>
                 LKR {details.priceAmount.toLocaleString()}
                 <span style={{ fontSize: 14, color: 'var(--text-secondary)', fontWeight: 500 }}>{details.rentalUnit}</span>
               </div>
             </div>
 
-            <div className="property-details-stats" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0,1fr))', gap: 8, marginBottom: 12 }}>
+            <div className="property-details-stats" style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, minmax(0,1fr))' : 'repeat(4, minmax(0,1fr))', gap: 8, marginBottom: 12 }}>
               <div className="card" style={{ padding: 10, textAlign: 'center' }}><strong>{details.bedrooms}</strong><div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Bedrooms</div></div>
               <div className="card" style={{ padding: 10, textAlign: 'center' }}><strong>{details.bathrooms}</strong><div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Bathrooms</div></div>
               <div className="card" style={{ padding: 10, textAlign: 'center' }}><strong>{property.maxOccupancy || 1}</strong><div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Guests</div></div>
@@ -353,7 +362,7 @@ export default function PropertyDetails() {
             <input type="date" className="form-input" value={requestForm.moveInDate} onChange={(e) => setRequestForm((f) => ({ ...f, moveInDate: e.target.value }))} />
 
             <label style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Duration</label>
-            <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 8, flexDirection: isMobile ? 'column' : 'row' }}>
               <input type="number" min={1} className="form-input" value={requestForm.duration} onChange={(e) => setRequestForm((f) => ({ ...f, duration: e.target.value }))} />
               <select className="form-input" value={requestForm.durationType} onChange={(e) => setRequestForm((f) => ({ ...f, durationType: e.target.value }))}>
                 <option value="days">Days</option>
@@ -398,7 +407,7 @@ export default function PropertyDetails() {
               <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>Complete Payment</h3>
               <input className="form-input" placeholder="Cardholder name" value={paymentForm.cardName} onChange={(e) => setPaymentForm((f) => ({ ...f, cardName: e.target.value }))} style={{ marginBottom: 8 }} />
               <input className="form-input" placeholder="Card number" value={paymentForm.cardNumber} onChange={(e) => setPaymentForm((f) => ({ ...f, cardNumber: e.target.value }))} style={{ marginBottom: 8 }} />
-              <div className="property-details-payment-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+              <div className="property-details-payment-grid" style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 8, marginBottom: 8 }}>
                 <input className="form-input" placeholder="MM/YY" value={paymentForm.expiry} onChange={(e) => setPaymentForm((f) => ({ ...f, expiry: e.target.value }))} />
                 <input className="form-input" placeholder="CVC" value={paymentForm.cvc} onChange={(e) => setPaymentForm((f) => ({ ...f, cvc: e.target.value }))} />
               </div>
@@ -444,12 +453,12 @@ export default function PropertyDetails() {
             padding: 16,
           }}
         >
-          <div className="card" onClick={(e) => e.stopPropagation()} style={{ width: 'min(900px, 95vw)', padding: 10 }}>
+          <div className="card" onClick={(e) => e.stopPropagation()} style={{ width: 'min(900px, 95vw)', padding: isMobile ? 8 : 10 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
               <div style={{ fontWeight: 700 }}>Property Location</div>
               <button className="btn btn-sm" onClick={() => setShowMap(false)}>Close</button>
             </div>
-            <iframe title="Property map" src={mapEmbedUrl} style={{ width: '100%', height: 420, border: '1px solid #E2E8F0', borderRadius: 10 }} loading="lazy" />
+            <iframe title="Property map" src={mapEmbedUrl} style={{ width: '100%', height: isMobile ? 300 : 420, border: '1px solid #E2E8F0', borderRadius: 10 }} loading="lazy" />
           </div>
         </div>
       )}

@@ -5,6 +5,9 @@ import AdminUserDetailModal from './AdminUserDetailModal';
 import { Users, Search, CheckCircle, Lock, Unlock, AlertCircle } from 'lucide-react';
 
 export default function AdminUsers() {
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== 'undefined' && window.innerWidth <= 768
+  );
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -20,6 +23,12 @@ export default function AdminUsers() {
   const [actionReason, setActionReason] = useState('');
 
   const limit = 20;
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   useEffect(() => { loadUsers(); }, [page, search, roleFilter, statusFilter, verifiedFilter]);
 
@@ -262,7 +271,7 @@ export default function AdminUsers() {
         </div>
 
         {totalPages > 1 && (
-          <div style={{ padding: 16, borderTop: '1px solid #E2E8F0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ padding: 16, borderTop: '1px solid #E2E8F0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexDirection: isMobile ? 'column' : 'row', gap: isMobile ? 10 : 0 }}>
             <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Page {page} of {totalPages} ({total} total)</div>
             <div style={{ display: 'flex', gap: 8 }}>
               <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="btn btn-sm" style={{ border: '1px solid #E2E8F0' }}>Previous</button>
@@ -285,7 +294,7 @@ export default function AdminUsers() {
       {suspendModal && !detailModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(2,6,23,0.55)', backdropFilter: 'blur(4px)', display: 'grid', placeItems: 'center', zIndex: 1300, padding: 16 }}>
           <div style={{ background: '#fff', borderRadius: 16, width: 'min(420px,96vw)', boxShadow: '0 24px 60px rgba(0,0,0,0.25)', overflow: 'hidden' }}>
-            <div style={{ padding: '20px 24px 0', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+            <div style={{ padding: isMobile ? '16px 16px 0' : '20px 24px 0', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
               <div style={{ width: 44, height: 44, borderRadius: 12, background: '#FEF2F2', display: 'grid', placeItems: 'center' }}>
                 <AlertCircle size={22} style={{ color: '#EF4444' }} />
               </div>
@@ -293,17 +302,17 @@ export default function AdminUsers() {
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
-            <div style={{ padding: '14px 24px 0' }}>
+            <div style={{ padding: isMobile ? '12px 16px 0' : '14px 24px 0' }}>
               <h2 style={{ fontSize: 18, fontWeight: 700, color: '#0F172A', marginBottom: 8 }}>Suspend User?</h2>
               <p style={{ fontSize: 14, color: '#64748B', lineHeight: 1.65 }}>
                 Suspend <strong>{suspendModal.firstName} {suspendModal.lastName}</strong>? They won't be able to log in.
               </p>
             </div>
-            <div style={{ margin: '14px 24px 0' }}>
+            <div style={{ margin: isMobile ? '12px 16px 0' : '14px 24px 0' }}>
               <textarea placeholder="Reason (optional)" value={actionReason} onChange={e => setActionReason(e.target.value)}
                 style={{ width: '100%', padding: 8, border: '1px solid #E2E8F0', borderRadius: 6, fontSize: 13, resize: 'none', height: 60, fontFamily: 'inherit', boxSizing: 'border-box' }} />
             </div>
-            <div style={{ padding: '16px 24px 20px', display: 'flex', gap: 10 }}>
+            <div style={{ padding: isMobile ? '14px 16px 16px' : '16px 24px 20px', display: 'flex', gap: 10, flexDirection: isMobile ? 'column-reverse' : 'row' }}>
               <button onClick={() => { setSuspendModal(null); setActionReason(''); }}
                 style={{ flex: 1, height: 42, borderRadius: 10, border: '1px solid #E2E8F0', background: '#F8FAFC', color: '#475569', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
                 Cancel
