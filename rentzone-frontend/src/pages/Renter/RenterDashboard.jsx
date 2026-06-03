@@ -276,11 +276,39 @@ function Slider({ items, loading, skeletonCount = 3, renderItem, emptyState }) {
 ───────────────────────────────────────────── */
 function EmptyState({ emoji, title, desc, to, btnLabel }) {
   return (
-    <div className="card" style={{ padding: '40px 24px', textAlign: 'center' }}>
+    <div
+      className="card"
+      style={{
+        padding: '40px 24px',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        textAlign: 'center',
+        minHeight: 220,
+      }}
+    >
       <div style={{ fontSize: 36, marginBottom: 12 }}>{emoji}</div>
-      <div className="empty-title" style={{ marginBottom: 6 }}>{title}</div>
-      <div className="empty-desc" style={{ marginBottom: 20 }}>{desc}</div>
-      {to && <Link to={to} className="btn btn-primary btn-sm">{btnLabel}</Link>}
+
+      <div className="empty-title" style={{ marginBottom: 6 }}>
+        {title}
+      </div>
+
+      <div
+        className="empty-desc"
+        style={{
+          marginBottom: 20,
+          maxWidth: 320,
+        }}
+      >
+        {desc}
+      </div>
+
+      {to && (
+        <Link to={to} className="btn btn-primary btn-sm">
+          {btnLabel}
+        </Link>
+      )}
     </div>
   );
 }
