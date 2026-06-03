@@ -728,27 +728,35 @@ export default function PropertyModal({ propertyId, onClose, initialBookingId })
                 <div style={{ textAlign: 'center', padding: '24px 0' }}>
                   <div style={{
                     width: 72, height: 72, borderRadius: '50%', margin: '0 auto 14px',
-                    background: status === 'rejected' ? '#FEE2E2' : '#ECFDF5',
+                    background: status === 'rejected' ? '#FEE2E2' : status === 'confirmed' || status === 'active' ? '#ECFDF5' : '#FFFBEB',
                     display: 'grid', placeItems: 'center',
                   }}>
                     {status === 'rejected' ? (
                       <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                    ) : (
+                    ) : status === 'confirmed' || status === 'active' ? (
                       <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>
+                    ) : (
+                      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#D97706" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                     )}
                   </div>
                   <div style={{ fontSize: 17, fontWeight: 700, color: '#1E293B', marginBottom: 8 }}>
-                    {status === 'rejected' ? 'Booking Declined' : 'Booking Request Accepted!'}
+                    {status === 'rejected'
+                      ? 'Booking Declined'
+                      : status === 'confirmed' || status === 'active'
+                      ? 'Booking Request Accepted!'
+                      : 'Waiting for Owner Response'}
                   </div>
                   <div style={{ fontSize: 13, color: '#64748B', lineHeight: 1.6, maxWidth: 260, margin: '0 auto' }}>
                     {status === 'rejected'
                       ? 'The owner declined your request. You can submit a new request with different dates.'
-                      : 'The property owner has accepted your booking. Please proceed to payment.'}
+                      : status === 'confirmed' || status === 'active'
+                      ? 'The property owner has accepted your booking. Please proceed to payment.'
+                      : 'Your booking request has been sent. The owner will review and respond shortly.'}
                   </div>
                 </div>
 
-                {/* Payment summary */}
-                {currentBooking && status !== 'rejected' && (
+                {/* Payment summary — only show when confirmed */}
+                {currentBooking && (status === 'confirmed' || status === 'active') && !paySettled && (
                   <div style={{ background: '#F8FAFC', borderRadius: 10, padding: 14, border: '1px solid #E2E8F0', marginBottom: 16 }}>
                     <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10, color: '#1E293B' }}>Payment Details</div>
                     {details.isDaily ? (
@@ -771,7 +779,7 @@ export default function PropertyModal({ propertyId, onClose, initialBookingId })
                   </div>
                 )}
 
-                {/* Only show "Proceed to Payment" if payment is not yet settled */}
+                {/* Proceed to Payment */}
                 {(status === 'confirmed' || status === 'active') && !paySettled && (
                   <button
                     className="btn btn-primary btn-full"
@@ -782,12 +790,14 @@ export default function PropertyModal({ propertyId, onClose, initialBookingId })
                   </button>
                 )}
 
+                {/* Pending state */}
                 {status === 'pending' && (
                   <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 10, padding: '12px 14px', fontSize: 13, color: '#92400E', textAlign: 'center' }}>
                     ⏳ Waiting for the owner to respond…
                   </div>
                 )}
 
+                {/* Rejected state */}
                 {status === 'rejected' && (
                   <button className="btn btn-primary btn-full" style={{ height: 44, fontSize: 14, marginTop: 8 }} onClick={() => { setCurrentBooking(null); setActiveStep(1); }}>
                     Submit New Request
