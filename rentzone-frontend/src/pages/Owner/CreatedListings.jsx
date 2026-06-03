@@ -465,25 +465,11 @@ export default function CreatedListings() {
                         </span>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <Heart size={16} color="#64748B" />
-                        <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-                          {listing.favorites || 0} saves
-                        </span>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <Calendar size={16} color="#64748B" />
                         <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
                           {listing.bookingStats?.confirmedBookings || 0} bookings
                         </span>
                       </div>
-                      {listing.bookingStats?.totalRevenue > 0 && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <DollarSign size={16} color="#14B8A6" />
-                          <span style={{ fontSize: 13, color: '#14B8A6', fontWeight: 500 }}>
-                            LKR {listing.bookingStats.totalRevenue.toLocaleString()}
-                          </span>
-                        </div>
-                      )}
                     </div>
                   </div>
 
