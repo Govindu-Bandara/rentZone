@@ -7,6 +7,17 @@ import PropertyModal from '../../components/common/PropertyModal';
 
 /* ---- Status config ---- */
 const STATUS_CONFIG = {
+  payment_confirmed: {
+    label: 'Payment Confirmed',
+    bg: '#ECFDF5',
+    color: '#065F46',
+    border: 'rgba(16,185,129,0.25)',
+    icon: (
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+        <polyline points="20 6 9 17 4 12" />
+      </svg>
+    ),
+  },
   payment_completed: {
     label: 'Payment Completed',
     bg: '#ECFDF5',
@@ -75,13 +86,6 @@ const TAB_OPTIONS = [
 
 /**
  * Compute display amount = 1st month rent + security deposit.
- *
- * Backend stores:
- *   totalAmount = monthlyRent x duration + securityDeposit  (monthly)
- *   totalAmount = nights x dailyRate + securityDeposit      (daily)
- *
- * So:  securityDeposit = totalAmount - monthlyRent x duration
- *      displayAmount   = monthlyRent + securityDeposit
  */
 function resolveDisplayAmount(booking) {
   if (!booking) return 0;
@@ -102,19 +106,16 @@ function resolveDisplayAmount(booking) {
 function CancelConfirmModal({ booking, onConfirm, onClose, busy }) {
   const property = booking?.house || booking?.property || {};
 
-  // Close on backdrop click
   const handleBackdrop = (e) => {
     if (e.target === e.currentTarget && !busy) onClose();
   };
 
-  // Close on Escape key
   useEffect(() => {
     const handler = (e) => { if (e.key === 'Escape' && !busy) onClose(); };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [onClose, busy]);
 
-  // Lock body scroll while open
   useEffect(() => {
     document.body.style.overflow = 'hidden';
     return () => { document.body.style.overflow = ''; };
@@ -259,10 +260,21 @@ function CancelConfirmModal({ booking, onConfirm, onClose, busy }) {
 function BookingCard({ booking, onRequestCancel, onOpenModal }) {
   const property  = booking.house || booking.property || {};
   const status    = booking.status || 'pending';
-  const cfg       = STATUS_CONFIG[status] || STATUS_CONFIG.pending;
+  const payStatus = booking.paymentStatus || '';
+
+  // Resolve display status: if payment is confirmed by owner, show that badge
+  const displayStatusKey = payStatus === 'payment_confirmed'
+    ? 'payment_confirmed'
+    : (STATUS_CONFIG[status] ? status : 'pending');
+  const cfg = STATUS_CONFIG[displayStatusKey] || STATUS_CONFIG.pending;
+
   const bookingId = booking._id || booking.id;
   const houseId   = booking.houseId || booking.house?._id || booking.property?._id;
-  const canPay    = (status === 'confirmed' || status === 'active') && booking.paymentStatus !== 'paid';
+
+  // Don't show "Pay Now" if payment is already confirmed or paid
+  const isPaid = payStatus === 'paid' || payStatus === 'payment_confirmed' || payStatus === 'initial_paid';
+  const canPay = (status === 'confirmed' || status === 'active') && !isPaid;
+
   // Only pending bookings can be cancelled by the renter
   const canCancel = status === 'pending';
 
@@ -280,7 +292,7 @@ function BookingCard({ booking, onRequestCancel, onOpenModal }) {
   const imageSrc = resolveImage() || 'https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=400&auto=format&fit=crop&q=60';
 
   const displayAmount = resolveDisplayAmount(booking);
-  const amountLabel   = booking.paymentStatus === 'paid' ? 'paid' : 'due today';
+  const amountLabel   = isPaid ? 'paid' : 'due today';
 
   const typeLabel = {
     apartment: 'Apartment', house: 'House',
@@ -360,6 +372,13 @@ function BookingCard({ booking, onRequestCancel, onOpenModal }) {
           <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 0 }}>
             1st month rent + security deposit
           </div>
+
+          {/* Payment confirmed note */}
+          {payStatus === 'payment_confirmed' && booking.paymentConfirmedAt && (
+            <div style={{ marginTop: 6, fontSize: 11, color: '#065F46', background: '#F0FDF4', border: '1px solid #DCFCE7', borderRadius: 6, padding: '4px 8px', display: 'inline-block' }}>
+              ✓ Confirmed by owner on {new Date(booking.paymentConfirmedAt).toLocaleDateString('en-LK', { day: '2-digit', month: 'short', year: 'numeric' })}
+            </div>
+          )}
         </div>
 
         {/* Status & actions */}
@@ -407,11 +426,9 @@ export default function Bookings() {
   const [error,        setError     ] = useState('');
   const [activeTab,    setActiveTab ] = useState('all');
 
-  // Cancel modal state: holds the full booking object being cancelled
   const [cancelTarget, setCancelTarget] = useState(null);
   const [cancelBusy,   setCancelBusy  ] = useState(false);
 
-  // Property modal state
   const [modalState, setModalState] = useState(null);
 
   const fetchBookings = useCallback(async () => {
@@ -429,12 +446,10 @@ export default function Bookings() {
 
   useEffect(() => { fetchBookings(); }, [fetchBookings]);
 
-  /* Step 1: user clicks "Cancel Request" — open confirmation modal */
   const handleRequestCancel = useCallback((booking) => {
     setCancelTarget(booking);
   }, []);
 
-  /* Step 2: user confirms in modal — call API then close */
   const handleConfirmCancel = useCallback(async () => {
     if (!cancelTarget || cancelBusy) return;
     const bookingId = cancelTarget._id || cancelTarget.id;
@@ -442,11 +457,6 @@ export default function Bookings() {
 
     setCancelBusy(true);
     try {
-      // PUT /renter/bookings/:id  { action: 'cancel' }
-      // Backend (rentzone-renter-bookings) validates:
-      //   - booking belongs to this renter (renterId match)
-      //   - status is not already 'cancelled' or 'completed'
-      // Then sets status = 'cancelled', cancellationReason, cancelledAt
       await bookingAPI.updateRenterBooking(bookingId, { action: 'cancel' });
       toast.success('Booking request cancelled successfully');
       setCancelTarget(null);
@@ -458,7 +468,6 @@ export default function Bookings() {
     }
   }, [cancelTarget, cancelBusy, fetchBookings]);
 
-  /* Dismiss modal without doing anything */
   const handleDismissCancel = useCallback(() => {
     if (cancelBusy) return;
     setCancelTarget(null);
@@ -468,7 +477,6 @@ export default function Bookings() {
     setModalState({ propertyId, bookingId });
   }, []);
 
-  // Refresh bookings when property modal closes so payment/status changes are reflected
   const handleCloseModal = useCallback(async () => {
     setModalState(null);
     await fetchBookings();
@@ -549,7 +557,7 @@ export default function Bookings() {
         </div>
       )}
 
-      {/* ── Cancel confirmation popup ── */}
+      {/* Cancel confirmation popup */}
       {cancelTarget && (
         <CancelConfirmModal
           booking={cancelTarget}
@@ -559,7 +567,7 @@ export default function Bookings() {
         />
       )}
 
-      {/* ── Property detail / payment modal ── */}
+      {/* Property detail / payment modal */}
       {modalState && (
         <PropertyModal
           propertyId={modalState.propertyId}

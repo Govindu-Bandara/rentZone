@@ -137,13 +137,16 @@ api.interceptors.response.use(
 
 // ==================== AUTH API ====================
 export const authAPI = {
-  login:         (credentials) => api.post('/auth/login', credentials),
-  register:      (userData)    => api.post('/auth/register', userData),
-  registerAdmin: (userData)    => api.post('/auth/admin/register', userData),
-  logout:        ()            => api.post('/auth/logout'),
-  refreshToken:  (rt)          => api.post('/auth/refresh', { refreshToken: rt }),
-  verifyEmail:   (data)        => api.post('/auth/verify-email', data),
-  resendOTP:     (data)        => api.post('/auth/resend-otp', data),
+  login: (credentials) => api.post('/auth/login', credentials),
+  register: (userData) => api.post('/auth/register', userData),
+  registerAdmin: (userData) => api.post('/auth/admin/register', userData),
+  logout: () => api.post('/auth/logout'),
+  refreshToken: (rt) => api.post('/auth/refresh', { refreshToken: rt }),
+  verifyEmail: (data) => api.post('/auth/verify-email', data),
+  resendOTP: (data) => api.post('/auth/resend-otp', data),
+  forgotPassword: (email) => api.post('/auth/forgot-password', { email }),
+  resetPassword: (token, email, newPassword) =>
+    api.post('/auth/reset-password', { token, email, newPassword }),
 };
 
 // ==================== USER API ====================
@@ -201,7 +204,6 @@ export const paymentAPI = {
 };
 
 // ==================== FAVORITES API ====================
-// Exported as BOTH favoriteAPI (legacy) and favoritesAPI (new dashboard)
 export const favoriteAPI = {
   getFavorites:  (params)  => api.get('/favourites', { params }),
   addFavorite:   (houseId) => api.post('/favourites', { houseId }),
@@ -215,41 +217,11 @@ export const favoritesAPI = {
 };
 
 // ==================== MESSAGE API ====================
-// REST endpoints hit the rentzone-get-messages Lambda.
-// Real-time sending / delivery / read receipts / typing are handled
-// via WebSocket (socket.js). The REST methods here are for initial
-// data loads and as fallbacks when the socket is unavailable.
 export const messageAPI = {
-  /**
-   * GET /messages
-   * Returns all conversations for the authenticated user, sorted by
-   * lastMessageAt descending. Each item includes otherUser, lastMessage,
-   * unreadCount, and participantsMeta.
-   */
   getConversations: () => api.get('/messages'),
-
-  /**
-   * GET /messages?conversationId=<id>
-   * Returns paginated messages + conversation meta for a single thread.
-   * Called on initial conversation open.
-   */
   getMessages: (conversationId) =>
     api.get('/messages', { params: { conversationId } }),
-
-  /**
-   * POST /sendMessage  (REST fallback only)
-   * Used when the WebSocket is not open.
-   * Payload: { receiverId, message, messageType?, attachments?, tempId? }
-   * Prefer sendWS('sendMessage', payload) for real-time delivery.
-   */
   sendMessage: (payload) => api.post('/sendMessage', payload),
-
-  /**
-   * PUT /messages/read  (REST fallback only)
-   * Marks messages as read when the socket is unavailable.
-   * Payload: { conversationId?, messageIds? }
-   * Prefer sendWS('markAsRead', payload) for real-time read receipts.
-   */
   markAsRead: (payload) => api.put('/messages/read', payload),
 };
 
@@ -276,7 +248,6 @@ export const renterAPI = {
   updateBooking:      (id, data) => api.put(`/renter/bookings/${id}`, data),
   getRecommendations: (params)   => api.get('/recommendations', { params }),
   getRecentlyViewed:  (params)   => api.get('/recently-viewed', { params }),
-  // Aliases used by RenterDashboard
   getSaved:           (params)   => api.get('/favourites', { params }),
 };
 

@@ -75,20 +75,22 @@ const AMENITY_LABELS = {
 
 function formatAmenityLabel(amenity) {
   if (!amenity) return '';
-
   const normalized = String(amenity).replace(/[_\-/\s]+/g, '').toLowerCase();
   if (AMENITY_LABELS[normalized]) return AMENITY_LABELS[normalized];
-
   const text = String(amenity)
     .replace(/[_\-]+/g, ' ')
     .replace(/([a-z])([A-Z])/g, '$1 $2')
     .trim();
-
   return text
     .split(/\s+/)
     .filter(Boolean)
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
     .join(' ');
+}
+
+/* ─── Helper: is payment fully settled ───────────────────── */
+function isPaymentSettled(paymentStatus) {
+  return ['paid', 'initial_paid', 'payment_confirmed'].includes(String(paymentStatus || '').toLowerCase());
 }
 
 /* ─── Main Modal ──────────────────────────────────────────── */
@@ -145,7 +147,6 @@ export default function PropertyModal({ propertyId, onClose, initialBookingId })
         const res = await propertyAPI.getProperty(propertyId);
         const houseData = res.data?.house || res.data?.property || res.data;
         const ownerData = res.data?.owner;
-        // Include owner data in property object so details memo can access it
         setProperty({ ...houseData, owner: ownerData });
         await loadBookings();
       } catch { toast.error('Failed to load property'); onClose(); }
@@ -187,13 +188,20 @@ export default function PropertyModal({ propertyId, onClose, initialBookingId })
     return () => clearInterval(interval);
   }, [orderedImages.length]);
 
-  /* Sync step from booking status */
+  /* Sync step from booking status — handles payment_confirmed */
   useEffect(() => {
     if (!currentBooking) { setActiveStep(1); return; }
     const s = currentBooking.status;
     const p = currentBooking.paymentStatus;
-    if (p === 'paid' || s === 'payment_completed' || s === 'completed') { setActiveStep(4); return; }
+
+    // Step 4: any settled payment OR completed booking
+    if (isPaymentSettled(p) || s === 'payment_completed' || s === 'completed') {
+      setActiveStep(4);
+      return;
+    }
+    // Step 3: confirmed/active but payment not yet made
     if (s === 'confirmed' || s === 'active') { setActiveStep(3); return; }
+    // Step 2: pending or rejected
     if (s === 'pending' || s === 'rejected') { setActiveStep(2); return; }
     setActiveStep(1);
   }, [currentBooking]);
@@ -225,17 +233,14 @@ export default function PropertyModal({ propertyId, onClose, initialBookingId })
     const coords        = property?.location?.coordinates;
     const isDaily       = property?.rentalType === 'daily' || property?.propertyType === 'Short-Stay Rental';
 
-    // derive lat/lng for map components (some APIs store [lng, lat] or object shapes)
     let centerCoords = null;
     if (coords) {
       if (Array.isArray(coords) && coords.length >= 2) {
         const a = Number(coords[0]);
         const b = Number(coords[1]);
         if (Math.abs(a) <= 90 && Math.abs(b) <= 180) {
-          // likely [lat, lng]
           centerCoords = [a, b];
         } else {
-          // likely [lng, lat]
           centerCoords = [b, a];
         }
       } else if (coords.latitude && coords.longitude) {
@@ -250,7 +255,6 @@ export default function PropertyModal({ propertyId, onClose, initialBookingId })
     }
     if (!mapUrl) mapUrl = `https://maps.google.com/maps?q=${encodeURIComponent(address)}&t=&z=14&ie=UTF8&iwloc=&output=embed`;
 
-    // owner fallbacks: support multiple backend shapes
     const ownerNameFallback = [owner.firstName, owner.lastName].filter(Boolean).join(' ')
       || owner.name || owner.fullName || property?.ownerName || property?.ownerFullName || property?.ownerInfo?.name || property?.host?.name || 'Property Owner';
 
@@ -269,19 +273,13 @@ export default function PropertyModal({ propertyId, onClose, initialBookingId })
     };
   }, [property]);
 
-  /*
-   * For MONTHLY rentals: Payment due = 1st month rent + security deposit
-   * For DAILY rentals: Payment due = (daily rate × number of days) + security deposit
-   */
   const calculatePricingDetails = useMemo(() => {
     if (details.isDaily) {
-      // Daily rental calculation
       if (!requestForm.moveInDate || !requestForm.duration) {
         return { rentAmount: 0, days: 0, label: '—', description: '' };
       }
       const moveIn = new Date(requestForm.moveInDate);
       let moveOut = new Date(moveIn);
-      
       const duration = parseInt(requestForm.duration) || 0;
       switch (requestForm.durationType) {
         case 'weeks':
@@ -295,10 +293,8 @@ export default function PropertyModal({ propertyId, onClose, initialBookingId })
           moveOut.setDate(moveOut.getDate() + duration);
           break;
       }
-      
       const days = Math.ceil((moveOut - moveIn) / (1000 * 60 * 60 * 24));
       const rentAmount = details.priceAmount * days;
-      
       return {
         rentAmount,
         days,
@@ -306,19 +302,15 @@ export default function PropertyModal({ propertyId, onClose, initialBookingId })
         description: `${days} night${days !== 1 ? 's' : ''}`,
       };
     } else {
-      // Monthly rental - use property price as 1st month
       return {
         rentAmount: details.priceAmount,
-        days: 1, // not used for monthly
+        days: 1,
         label: '1st Month Rent',
         description: 'First month',
       };
     }
   }, [details.isDaily, details.priceAmount, requestForm.moveInDate, requestForm.duration, requestForm.durationType]);
 
-  // For confirmed bookings:
-  // - Daily rentals: pay full stay rent (+ deposit)
-  // - Monthly rentals: pay only first month (+ deposit)
   const priceDetails = useMemo(() => {
     if (currentBooking) {
       const rentPart = Number(currentBooking.totalAmount || 0) - Number(details.securityDeposit ?? 0);
@@ -334,7 +326,6 @@ export default function PropertyModal({ propertyId, onClose, initialBookingId })
         };
       }
       return {
-        // For monthly flow, charge one month using the displayed property monthly rate.
         rentAmount: Number(details.priceAmount || currentBooking.monthlyRent || 0),
         days: 1,
         label: details.isDaily ? '—' : '1st Month Rent',
@@ -383,36 +374,27 @@ export default function PropertyModal({ propertyId, onClose, initialBookingId })
   const processPayment = async () => {
     const bookingId = currentBooking?._id || currentBooking?.id;
     if (!bookingId) { toast.error('Booking not found'); return; }
-    
-    // Clear previous errors
     setPaymentError('');
-    
-    // Validation
+
     if (!paymentForm.cardName || !paymentForm.cardNumber || !paymentForm.expiry || !paymentForm.cvc) {
       setPaymentError('Please fill all payment fields');
       return;
     }
-    
-    // Card number validation (remove spaces and check length)
     const cardNumberClean = paymentForm.cardNumber.replace(/\s/g, '');
     if (cardNumberClean.length < 13 || cardNumberClean.length > 19) {
       setPaymentError('Card number must be between 13 and 19 digits');
       return;
     }
-    
-    // Expiry validation
     const expiryParts = paymentForm.expiry.split('/');
     if (expiryParts.length !== 2 || expiryParts[0].length !== 2 || expiryParts[1].length !== 2) {
       setPaymentError('Expiry date must be in MM/YY format');
       return;
     }
-    
-    // CVC validation
     if (paymentForm.cvc.length < 3 || paymentForm.cvc.length > 4) {
       setPaymentError('CVC must be 3 or 4 digits');
       return;
     }
-    
+
     setProcessingPayment(true);
     try {
       const res = await paymentAPI.processPayment(bookingId, {
@@ -469,6 +451,8 @@ export default function PropertyModal({ propertyId, onClose, initialBookingId })
   if (!property) return null;
 
   const status      = currentBooking?.status;
+  const payStatus   = currentBooking?.paymentStatus || '';
+  const paySettled  = isPaymentSettled(payStatus);
   const images      = orderedImages.length > 0 ? orderedImages : (details.images || []);
   const mainImage   = images[activeImageIdx]?.url || images[activeImageIdx] || 'https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=800&auto=format&fit=crop&q=60';
 
@@ -591,7 +575,6 @@ export default function PropertyModal({ propertyId, onClose, initialBookingId })
                   <div style={{ fontWeight: 600, fontSize: 14, color: '#1E293B' }}>{details.ownerName}</div>
                   {details.ownerPhone && <div style={{ fontSize: 12, color: '#64748B' }}>{details.ownerPhone}</div>}
                 </div>
-                {/* Message button - only allow renters to initiate conversation */}
                 {user?.role === 'renter' && (
                   <div style={{ marginLeft: 'auto' }}>
                     <button onClick={() => {
@@ -605,12 +588,10 @@ export default function PropertyModal({ propertyId, onClose, initialBookingId })
                         toast.error('Owner info is missing for this property');
                         return;
                       }
-
                       if (String(user?._id || '') === String(ownerId)) {
                         toast.error('You cannot message yourself');
                         return;
                       }
-
                       navigate('/renter/messages', {
                         state: {
                           recipientId: String(ownerId),
@@ -694,12 +675,12 @@ export default function PropertyModal({ propertyId, onClose, initialBookingId })
                   </div>
                 </div>
 
-                {/* Order Summary — shown before a booking exists, uses property price */}
+                {/* Order Summary */}
                 <div style={{ marginTop: 16, background: '#F8FAFC', borderRadius: 10, padding: 14, border: '1px solid #E2E8F0' }}>
                   <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10, color: '#1E293B' }}>Order Summary</div>
                   {details.isDaily ? (
                     <>
-                      <InfoRow 
+                      <InfoRow
                         label={`${priceDetails.description} @ LKR ${details.priceAmount.toLocaleString()}/night`}
                         value={`LKR ${priceDetails.rentAmount.toLocaleString()} Total`}
                         bold
@@ -766,7 +747,7 @@ export default function PropertyModal({ propertyId, onClose, initialBookingId })
                   </div>
                 </div>
 
-                {/* Payment summary — uses totalAmount from confirmed booking */}
+                {/* Payment summary */}
                 {currentBooking && status !== 'rejected' && (
                   <div style={{ background: '#F8FAFC', borderRadius: 10, padding: 14, border: '1px solid #E2E8F0', marginBottom: 16 }}>
                     <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10, color: '#1E293B' }}>Payment Details</div>
@@ -790,7 +771,8 @@ export default function PropertyModal({ propertyId, onClose, initialBookingId })
                   </div>
                 )}
 
-                {(status === 'confirmed' || status === 'active') && (
+                {/* Only show "Proceed to Payment" if payment is not yet settled */}
+                {(status === 'confirmed' || status === 'active') && !paySettled && (
                   <button
                     className="btn btn-primary btn-full"
                     style={{ height: 44, fontSize: 14, fontWeight: 600 }}
@@ -887,7 +869,7 @@ export default function PropertyModal({ propertyId, onClose, initialBookingId })
                   </div>
                 </div>
 
-                {/* Payment breakdown — sourced from booking.totalAmount */}
+                {/* Payment breakdown */}
                 <div style={{ marginTop: 16, background: '#F8FAFC', borderRadius: 10, padding: 14, border: '1px solid #E2E8F0' }}>
                   {details.isDaily ? (
                     <>
@@ -934,6 +916,18 @@ export default function PropertyModal({ propertyId, onClose, initialBookingId })
                   <p style={{ fontSize: 13, color: '#64748B', lineHeight: 1.6 }}>
                     Your booking has been successfully processed. You will receive a confirmation email shortly.
                   </p>
+
+                  {/* Payment confirmed by owner banner */}
+                  {payStatus === 'payment_confirmed' && (
+                    <div style={{ margin: '12px auto 0', maxWidth: 280, background: '#F0FDF4', border: '1px solid #DCFCE7', borderRadius: 10, padding: '10px 14px', fontSize: 12, color: '#166534' }}>
+                      ✅ Payment receipt confirmed by owner
+                      {currentBooking?.paymentConfirmedAt && (
+                        <div style={{ fontSize: 11, color: '#4ADE80', marginTop: 2 }}>
+                          {new Date(currentBooking.paymentConfirmedAt).toLocaleDateString('en-LK', { day: '2-digit', month: 'short', year: 'numeric' })}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Professional Receipt */}
@@ -1042,7 +1036,9 @@ export default function PropertyModal({ propertyId, onClose, initialBookingId })
                   {/* Payment Status & Footer */}
                   <div style={{ textAlign: 'center' }}>
                     <div style={{ background: '#F0FDF4', borderRadius: 4, padding: '2px 8px', marginBottom: 4, border: '1px solid #DCFCE7' }}>
-                      <p style={{ fontSize: 8, fontWeight: 600, color: '#166534', margin: 0 }}>✓ Payment Completed</p>
+                      <p style={{ fontSize: 8, fontWeight: 600, color: '#166534', margin: 0 }}>
+                        {payStatus === 'payment_confirmed' ? '✅ Payment Confirmed by Owner' : '✓ Payment Completed'}
+                      </p>
                     </div>
                     <p style={{ fontSize: 8, color: '#64748B', lineHeight: 1.3, margin: '0 0 2px 0' }}>
                       This receipt confirms your booking with RentZone.

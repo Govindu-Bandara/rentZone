@@ -1,5 +1,6 @@
 // src/components/common/UserProfile.jsx
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { uploadAPI, userAPI } from '../../services/api';
@@ -7,8 +8,6 @@ import { User, Mail, Phone, Camera, Lock, Save, X, LogOut, Eye, EyeOff, CheckCir
 
 /* ─────────────────────────────────────────────
    IMAGE CROP MODAL
-   Canvas-based: drag to pan, slider to zoom,
-   buttons to rotate. Produces a cropped Blob.
 ───────────────────────────────────────────── */
 function ImageCropModal({ imageSrc, onConfirm, onCancel }) {
   const canvasRef = useRef(null);
@@ -21,9 +20,8 @@ function ImageCropModal({ imageSrc, onConfirm, onCancel }) {
   );
   const dragStart = useRef(null);
   const imageRef = useRef(null);
-  const SIZE = 320; // crop circle diameter in px
+  const SIZE = 320;
 
-  // Load image once
   useEffect(() => {
     const img = new Image();
     img.src = imageSrc;
@@ -41,14 +39,12 @@ function ImageCropModal({ imageSrc, onConfirm, onCancel }) {
     ctx.translate(SIZE / 2 + offset.x, SIZE / 2 + offset.y);
     ctx.rotate((rotation * Math.PI) / 180);
     ctx.scale(zoom, zoom);
-
     const scale = Math.max(SIZE / img.width, SIZE / img.height);
     const w = img.width * scale;
     const h = img.height * scale;
     ctx.drawImage(img, -w / 2, -h / 2, w, h);
     ctx.restore();
 
-    // Darken outside circle
     ctx.save();
     ctx.fillStyle = 'rgba(0,0,0,0.55)';
     ctx.fillRect(0, 0, SIZE, SIZE);
@@ -58,7 +54,6 @@ function ImageCropModal({ imageSrc, onConfirm, onCancel }) {
     ctx.fill();
     ctx.restore();
 
-    // Circle border
     ctx.save();
     ctx.strokeStyle = 'rgba(255,255,255,0.8)';
     ctx.lineWidth = 2;
@@ -76,7 +71,6 @@ function ImageCropModal({ imageSrc, onConfirm, onCancel }) {
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
-  // Drag handlers
   const onMouseDown = (e) => {
     setDragging(true);
     dragStart.current = { x: e.clientX - offset.x, y: e.clientY - offset.y };
@@ -86,8 +80,6 @@ function ImageCropModal({ imageSrc, onConfirm, onCancel }) {
     setOffset({ x: e.clientX - dragStart.current.x, y: e.clientY - dragStart.current.y });
   };
   const onMouseUp = () => setDragging(false);
-
-  // Touch handlers
   const onTouchStart = (e) => {
     const t = e.touches[0];
     setDragging(true);
@@ -103,28 +95,20 @@ function ImageCropModal({ imageSrc, onConfirm, onCancel }) {
     const canvas = canvasRef.current;
     const img = imageRef.current;
     if (!canvas || !img) return;
-
-    // Render final cropped circle to a clean canvas
     const out = document.createElement('canvas');
     out.width = SIZE;
     out.height = SIZE;
     const ctx = out.getContext('2d');
-
-    // Clip to circle
     ctx.beginPath();
     ctx.arc(SIZE / 2, SIZE / 2, SIZE / 2, 0, Math.PI * 2);
     ctx.clip();
-
     ctx.save();
     ctx.translate(SIZE / 2 + offset.x, SIZE / 2 + offset.y);
     ctx.rotate((rotation * Math.PI) / 180);
     ctx.scale(zoom, zoom);
     const scale = Math.max(SIZE / img.width, SIZE / img.height);
-    const w = img.width * scale;
-    const h = img.height * scale;
-    ctx.drawImage(img, -w / 2, -h / 2, w, h);
+    ctx.drawImage(img, -(img.width * scale) / 2, -(img.height * scale) / 2, img.width * scale, img.height * scale);
     ctx.restore();
-
     out.toBlob((blob) => onConfirm(blob), 'image/jpeg', 0.92);
   };
 
@@ -136,7 +120,7 @@ function ImageCropModal({ imageSrc, onConfirm, onCancel }) {
     color: 'white', cursor: 'pointer', transition: 'background 0.15s',
   };
 
-  return (
+  return createPortal(
     <div style={{
       position: 'fixed', inset: 0, zIndex: 3000,
       background: 'rgba(0,0,0,0.85)',
@@ -144,14 +128,11 @@ function ImageCropModal({ imageSrc, onConfirm, onCancel }) {
       padding: 20,
     }}>
       <div style={{
-        background: '#0F172A',
-        borderRadius: isMobile ? 14 : 20,
-        padding: isMobile ? 14 : 28,
-        width: '100%', maxWidth: 420,
+        background: '#0F172A', borderRadius: isMobile ? 14 : 20,
+        padding: isMobile ? 14 : 28, width: '100%', maxWidth: 420,
         boxShadow: '0 30px 60px rgba(0,0,0,0.5)',
         border: '1px solid rgba(255,255,255,0.08)',
       }}>
-        {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
           <div>
             <h3 style={{ fontSize: 16, fontWeight: 700, color: 'white', marginBottom: 2 }}>Adjust Photo</h3>
@@ -162,57 +143,27 @@ function ImageCropModal({ imageSrc, onConfirm, onCancel }) {
           </button>
         </div>
 
-        {/* Canvas */}
         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 20 }}>
           <canvas
-            ref={canvasRef}
-            width={SIZE}
-            height={SIZE}
-            style={{
-              borderRadius: '50%',
-              cursor: dragging ? 'grabbing' : 'grab',
-              display: 'block',
-              touchAction: 'none',
-            }}
-            onMouseDown={onMouseDown}
-            onMouseMove={onMouseMove}
-            onMouseUp={onMouseUp}
-            onMouseLeave={onMouseUp}
-            onTouchStart={onTouchStart}
-            onTouchMove={onTouchMove}
-            onTouchEnd={onMouseUp}
-            onWheel={(e) => {
-              e.preventDefault();
-              setZoom((z) => Math.min(4, Math.max(0.5, z - e.deltaY * 0.001)));
-            }}
+            ref={canvasRef} width={SIZE} height={SIZE}
+            style={{ borderRadius: '50%', cursor: dragging ? 'grabbing' : 'grab', display: 'block', touchAction: 'none' }}
+            onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}
+            onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onMouseUp}
+            onWheel={(e) => { e.preventDefault(); setZoom((z) => Math.min(4, Math.max(0.5, z - e.deltaY * 0.001))); }}
           />
         </div>
 
-        {/* Zoom slider */}
         <div style={{ marginBottom: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <button onClick={() => setZoom((z) => Math.max(0.5, z - 0.1))} style={btnBase}>
-              <ZoomOut size={15} />
-            </button>
-            <input
-              type="range" min="50" max="400" step="1"
-              value={Math.round(zoom * 100)}
+            <button onClick={() => setZoom((z) => Math.max(0.5, z - 0.1))} style={btnBase}><ZoomOut size={15} /></button>
+            <input type="range" min="50" max="400" step="1" value={Math.round(zoom * 100)}
               onChange={(e) => setZoom(Number(e.target.value) / 100)}
-              style={{
-                flex: 1, height: 4, borderRadius: 4,
-                accentColor: '#2563EB', cursor: 'pointer',
-              }}
-            />
-            <button onClick={() => setZoom((z) => Math.min(4, z + 0.1))} style={btnBase}>
-              <ZoomIn size={15} />
-            </button>
+              style={{ flex: 1, height: 4, borderRadius: 4, accentColor: '#2563EB', cursor: 'pointer' }} />
+            <button onClick={() => setZoom((z) => Math.min(4, z + 0.1))} style={btnBase}><ZoomIn size={15} /></button>
           </div>
-          <div style={{ textAlign: 'center', fontSize: 11, color: '#475569', marginTop: 6 }}>
-            {Math.round(zoom * 100)}% zoom
-          </div>
+          <div style={{ textAlign: 'center', fontSize: 11, color: '#475569', marginTop: 6 }}>{Math.round(zoom * 100)}% zoom</div>
         </div>
 
-        {/* Rotation + reset */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 24 }}>
           <button onClick={() => setRotation((r) => r - 90)} style={{ ...btnBase, flex: 1, gap: 6, fontSize: 12, color: 'white' }}>
             <RotateCcw size={14} /> Rotate Left
@@ -220,35 +171,88 @@ function ImageCropModal({ imageSrc, onConfirm, onCancel }) {
           <button onClick={() => setRotation((r) => r + 90)} style={{ ...btnBase, flex: 1, gap: 6, fontSize: 12, color: 'white' }}>
             <RotateCw size={14} /> Rotate Right
           </button>
-          <button
-            onClick={() => { setZoom(1); setRotation(0); setOffset({ x: 0, y: 0 }); }}
-            style={{ ...btnBase, flex: 1, fontSize: 12, color: '#94A3B8', gap: 6 }}
-          >
+          <button onClick={() => { setZoom(1); setRotation(0); setOffset({ x: 0, y: 0 }); }}
+            style={{ ...btnBase, flex: 1, fontSize: 12, color: '#94A3B8', gap: 6 }}>
             <Move size={14} /> Reset
           </button>
         </div>
 
-        {/* Actions */}
         <div style={{ display: 'flex', gap: 10 }}>
           <button onClick={onCancel} style={{
             flex: 1, padding: '11px', borderRadius: 10,
             border: '1px solid rgba(255,255,255,0.1)',
             background: 'transparent', color: '#94A3B8',
             fontSize: 14, fontWeight: 600, cursor: 'pointer',
-          }}>
-            Cancel
-          </button>
+          }}>Cancel</button>
           <button onClick={handleConfirm} style={{
-            flex: 2, padding: '11px', borderRadius: 10,
-            border: 'none',
+            flex: 2, padding: '11px', borderRadius: 10, border: 'none',
             background: 'linear-gradient(135deg, #2563EB, #14B8A6)',
             color: 'white', fontSize: 14, fontWeight: 600, cursor: 'pointer',
+          }}>Apply &amp; Use Photo</button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+/* ─────────────────────────────────────────────
+   LOGOUT CONFIRM MODAL  — rendered via portal
+   so no parent overflow:hidden / transform
+   can clip or block it.
+───────────────────────────────────────────── */
+function LogoutModal({ onConfirm, onCancel }) {
+  return createPortal(
+    <div
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        zIndex: 2000, padding: 20,
+      }}
+      // Clicking the backdrop also cancels
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onCancel(); }}
+    >
+      <div style={{
+        background: 'white', borderRadius: 16, padding: 28,
+        width: '100%', maxWidth: 360,
+        boxShadow: '0 25px 50px rgba(0,0,0,0.2)',
+      }}>
+        <div style={{ textAlign: 'center', marginBottom: 20 }}>
+          <div style={{
+            width: 52, height: 52, borderRadius: '50%',
+            background: '#FEF3C7', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            margin: '0 auto 14px',
           }}>
-            Apply &amp; Use Photo
+            <LogOut size={22} color="#F59E0B" />
+          </div>
+          <h3 style={{ fontSize: 18, fontWeight: 700, color: '#0F172A', marginBottom: 6 }}>Confirm Logout</h3>
+          <p style={{ fontSize: 14, color: '#64748B' }}>Are you sure you want to log out of your account?</p>
+        </div>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button
+            onClick={onCancel}
+            style={{
+              flex: 1, padding: '10px', borderRadius: 8,
+              border: '1px solid #E2E8F0', background: 'white',
+              color: '#475569', fontSize: 14, fontWeight: 600, cursor: 'pointer',
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            style={{
+              flex: 1, padding: '10px', borderRadius: 8,
+              border: 'none', background: '#EF4444',
+              color: 'white', fontSize: 14, fontWeight: 600, cursor: 'pointer',
+            }}
+          >
+            Logout
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -274,19 +278,12 @@ const UserProfile = () => {
     () => typeof window !== 'undefined' && window.innerWidth <= 768
   );
   const [previewImage, setPreviewImage] = useState(null);
-
-  // Crop modal state
-  const [cropSrc, setCropSrc] = useState(null);        // raw data URL of selected file
-  const [pendingFile, setPendingFile] = useState(null); // original File object (for name)
+  const [cropSrc, setCropSrc] = useState(null);
+  const [pendingFile, setPendingFile] = useState(null);
 
   const [formData, setFormData] = useState({
-    firstName: '',
-    lastName: '',
-    phone: '',
-    profileImage: '',
-    currentPassword: '',
-    newPassword: '',
-    confirmPassword: '',
+    firstName: '', lastName: '', phone: '', profileImage: '',
+    currentPassword: '', newPassword: '', confirmPassword: '',
   });
 
   useEffect(() => { fetchProfile(); }, []);
@@ -304,72 +301,42 @@ const UserProfile = () => {
       const u = res.data?.user;
       setProfile(u);
       setFormData({
-        firstName: u?.firstName || '',
-        lastName: u?.lastName || '',
-        phone: u?.phone || '',
-        profileImage: u?.profileImage || '',
-        currentPassword: '',
-        newPassword: '',
-        confirmPassword: '',
+        firstName: u?.firstName || '', lastName: u?.lastName || '',
+        phone: u?.phone || '', profileImage: u?.profileImage || '',
+        currentPassword: '', newPassword: '', confirmPassword: '',
       });
       setPreviewImage(u?.profileImage || null);
-    } catch (err) {
+    } catch {
       setError('Failed to load profile. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  /* ── Step 1: file selected → open crop modal ── */
   const handlePhotoChange = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    if (file.size > 5 * 1024 * 1024) {
-      setError('Photo must be under 5MB.');
-      return;
-    }
-
+    if (file.size > 5 * 1024 * 1024) { setError('Photo must be under 5MB.'); return; }
     setError('');
     setPendingFile(file);
-
-    // Read as data URL for the canvas
     const reader = new FileReader();
     reader.onload = (ev) => setCropSrc(ev.target.result);
     reader.readAsDataURL(file);
-
-    // Reset input so same file can be re-selected
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  /* ── Step 2: user confirmed crop → upload blob ── */
   const handleCropConfirm = async (croppedBlob) => {
     setCropSrc(null);
-
-    // Show cropped blob as local preview immediately
-    const previewUrl = URL.createObjectURL(croppedBlob);
-    setPreviewImage(previewUrl);
-
+    setPreviewImage(URL.createObjectURL(croppedBlob));
     setUploadingPhoto(true);
     try {
-      // Canvas always outputs jpeg
       const fileName = (pendingFile?.name || 'profile.jpg').replace(/\.[^.]+$/, '.jpg');
       const fileType = 'image/jpeg';
-
       const { data } = await uploadAPI.getUploadUrl(fileName, fileType);
-      const { uploadUrl, fileUrl, publicUrl } = data;
-      const finalUrl = fileUrl || publicUrl;
-
+      const finalUrl = data.fileUrl || data.publicUrl;
       if (!finalUrl) throw new Error('No file URL returned from upload service');
-
-      const s3Res = await fetch(uploadUrl, {
-        method: 'PUT',
-        headers: { 'Content-Type': fileType },
-        body: croppedBlob,
-      });
-
+      const s3Res = await fetch(data.uploadUrl, { method: 'PUT', headers: { 'Content-Type': fileType }, body: croppedBlob });
       if (!s3Res.ok) throw new Error('S3 upload failed');
-
       setFormData((prev) => ({ ...prev, profileImage: finalUrl }));
     } catch {
       setError('Failed to upload photo. Please try again.');
@@ -381,104 +348,70 @@ const UserProfile = () => {
     }
   };
 
-  /* ── Step 2 alt: user cancelled crop ── */
-  const handleCropCancel = () => {
-    setCropSrc(null);
-    setPendingFile(null);
-  };
+  const handleCropCancel = () => { setCropSrc(null); setPendingFile(null); };
 
-  /* ── Submit profile ── */
   const handleSubmit = async () => {
-    setError('');
-    setSuccess('');
-
+    setError(''); setSuccess('');
     if (formData.newPassword && formData.newPassword !== formData.confirmPassword) {
-      setError('New passwords do not match.');
-      return;
+      setError('New passwords do not match.'); return;
     }
     if (formData.newPassword && formData.newPassword.length < 8) {
-      setError('New password must be at least 8 characters.');
-      return;
+      setError('New password must be at least 8 characters.'); return;
     }
     if (formData.newPassword && !formData.currentPassword) {
-      setError('Please enter your current password to set a new one.');
-      return;
+      setError('Please enter your current password to set a new one.'); return;
     }
-
     try {
       setLoading(true);
-
       const updateData = {
         firstName: formData.firstName.trim(),
         lastName: formData.lastName.trim(),
         phone: formData.phone.trim(),
       };
-      if (formData.profileImage && formData.profileImage.startsWith('http')) {
-        updateData.profileImage = formData.profileImage;
-      }
+      if (formData.profileImage?.startsWith('http')) updateData.profileImage = formData.profileImage;
       if (formData.currentPassword && formData.newPassword) {
         updateData.currentPassword = formData.currentPassword;
         updateData.newPassword = formData.newPassword;
       }
-
       const res = await userAPI.updateProfile(updateData);
       const updated = res.data?.user;
-
       if (!updated) throw new Error('No user data returned from server.');
-
       const savedImage = updated.profileImage ?? formData.profileImage ?? profile?.profileImage ?? null;
       const mergedUser = { ...updated, profileImage: savedImage };
-
       setProfile(mergedUser);
       setPreviewImage(savedImage);
-      setFormData((prev) => ({
-        ...prev,
-        profileImage: savedImage || '',
-        currentPassword: '',
-        newPassword: '',
-        confirmPassword: '',
-      }));
+      setFormData((prev) => ({ ...prev, profileImage: savedImage || '', currentPassword: '', newPassword: '', confirmPassword: '' }));
       setSuccess('Profile updated successfully!');
       setEditMode(false);
-
       if (typeof updateUser === 'function') updateUser(mergedUser);
-
       try {
         const stored = JSON.parse(localStorage.getItem('user') || '{}');
-        localStorage.setItem('user', JSON.stringify({
-          ...stored,
-          firstName: mergedUser.firstName,
-          lastName: mergedUser.lastName,
-          phone: mergedUser.phone,
-          profileImage: savedImage,
-        }));
+        localStorage.setItem('user', JSON.stringify({ ...stored, firstName: mergedUser.firstName, lastName: mergedUser.lastName, phone: mergedUser.phone, profileImage: savedImage }));
       } catch { /* ignore */ }
     } catch (err) {
-      const msg =
-        err?.error || err?.data?.error || err?.data?.message ||
-        err?.message || 'Failed to update profile. Please try again.';
-      setError(msg);
+      setError(err?.error || err?.data?.error || err?.data?.message || err?.message || 'Failed to update profile. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
   const handleCancel = () => {
-    setEditMode(false);
-    setError('');
+    setEditMode(false); setError('');
     setPreviewImage(profile?.profileImage || null);
     setFormData({
-      firstName: profile?.firstName || '',
-      lastName: profile?.lastName || '',
-      phone: profile?.phone || '',
-      profileImage: profile?.profileImage || '',
-      currentPassword: '',
-      newPassword: '',
-      confirmPassword: '',
+      firstName: profile?.firstName || '', lastName: profile?.lastName || '',
+      phone: profile?.phone || '', profileImage: profile?.profileImage || '',
+      currentPassword: '', newPassword: '', confirmPassword: '',
     });
   };
 
-  const handleLogout = () => { logout(); navigate('/login'); };
+  // FIX: logout now calls logout() then navigate — same as before,
+  // but the confirm modal is a portal so it can never be clipped.
+  const handleLogout = () => {
+    setShowLogoutConfirm(false);
+    logout();
+    navigate('/login');
+  };
 
   const initials = `${profile?.firstName?.[0] || ''}${profile?.lastName?.[0] || ''}`.toUpperCase() || 'U';
 
@@ -496,7 +429,11 @@ const UserProfile = () => {
   return (
     <div style={{ maxWidth: 720, margin: '0 auto', padding: isMobile ? '0 0 24px' : '0 0 40px' }}>
 
-      {/* ── Back button ── */}
+      {/* Portalled modals — outside any overflow:hidden parent */}
+      {cropSrc && <ImageCropModal imageSrc={cropSrc} onConfirm={handleCropConfirm} onCancel={handleCropCancel} />}
+      {showLogoutConfirm && <LogoutModal onConfirm={handleLogout} onCancel={() => setShowLogoutConfirm(false)} />}
+
+      {/* Back button */}
       <button
         onClick={() => navigate(-1)}
         style={{
@@ -506,8 +443,8 @@ const UserProfile = () => {
           color: '#475569', fontSize: 14, fontWeight: 600,
           cursor: 'pointer', transition: 'color 0.2s',
         }}
-        onMouseEnter={(e) => e.target.style.color = '#1E293B'}
-        onMouseLeave={(e) => e.target.style.color = '#475569'}
+        onMouseEnter={(e) => e.currentTarget.style.color = '#1E293B'}
+        onMouseLeave={(e) => e.currentTarget.style.color = '#475569'}
       >
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M15 18l-6-6 6-6" />
@@ -515,16 +452,7 @@ const UserProfile = () => {
         Back
       </button>
 
-      {/* ── Crop Modal ── */}
-      {cropSrc && (
-        <ImageCropModal
-          imageSrc={cropSrc}
-          onConfirm={handleCropConfirm}
-          onCancel={handleCropCancel}
-        />
-      )}
-
-      {/* ── Header card ── */}
+      {/* Header card */}
       <div style={{
         background: 'linear-gradient(135deg, #2563EB 0%, #14B8A6 100%)',
         borderRadius: 20,
@@ -533,10 +461,12 @@ const UserProfile = () => {
         position: 'relative',
         overflow: 'hidden',
       }}>
+        {/* Decorative circle — pointer-events:none so it never blocks buttons */}
         <div style={{
           position: 'absolute', top: -40, right: -40,
           width: 200, height: 200, borderRadius: '50%',
           background: 'rgba(255,255,255,0.08)',
+          pointerEvents: 'none',
         }} />
 
         <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 14 : 24, flexWrap: 'wrap' }}>
@@ -544,40 +474,31 @@ const UserProfile = () => {
           <label
             htmlFor="avatar-upload"
             style={{
-              position: 'relative',
-              width: 96, height: 96, borderRadius: '50%',
+              position: 'relative', width: 96, height: 96, borderRadius: '50%',
               border: '3px solid rgba(255,255,255,0.5)',
               cursor: editMode ? 'pointer' : 'default',
-              flexShrink: 0,
-              background: '#1D4ED8',
+              flexShrink: 0, background: '#1D4ED8',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               overflow: 'hidden',
               pointerEvents: editMode ? 'auto' : 'none',
             }}
           >
-            {previewImage ? (
-              <img src={previewImage} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-            ) : (
-              <span style={{ fontSize: 32, fontWeight: 700, color: 'white' }}>{initials}</span>
-            )}
+            {previewImage
+              ? <img src={previewImage} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              : <span style={{ fontSize: 32, fontWeight: 700, color: 'white' }}>{initials}</span>
+            }
             {editMode && (
               <div style={{
-                position: 'absolute', inset: 0,
-                background: 'rgba(0,0,0,0.5)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                borderRadius: '50%',
+                position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%',
               }}>
                 {uploadingPhoto
                   ? <div className="spinner" style={{ borderColor: 'rgba(255,255,255,0.3)', borderTopColor: 'white' }} />
-                  : <Camera size={22} color="white" />
-                }
+                  : <Camera size={22} color="white" />}
               </div>
             )}
             <input
-              id="avatar-upload"
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
+              id="avatar-upload" ref={fileInputRef} type="file" accept="image/*"
               disabled={!editMode || uploadingPhoto}
               style={{ display: 'none' }}
               onChange={handlePhotoChange}
@@ -590,10 +511,8 @@ const UserProfile = () => {
               {profile?.firstName} {profile?.lastName}
             </h1>
             <span style={{
-              display: 'inline-block',
-              background: 'rgba(255,255,255,0.2)',
-              color: 'white',
-              fontSize: 12, fontWeight: 600,
+              display: 'inline-block', background: 'rgba(255,255,255,0.2)',
+              color: 'white', fontSize: 12, fontWeight: 600,
               borderRadius: 20, padding: '3px 12px',
               textTransform: 'capitalize', letterSpacing: '0.5px',
             }}>
@@ -607,13 +526,13 @@ const UserProfile = () => {
           </div>
 
           {/* Action buttons */}
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', width: isMobile ? '100%' : 'auto' }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', width: isMobile ? '100%' : 'auto', position: 'relative', zIndex: 1 }}>
             {editMode ? (
               <>
-                <button onClick={handleCancel} style={btnStyle('ghost')}>
+                <button type="button" onClick={handleCancel} style={btnStyle('ghost')}>
                   <X size={15} /> Cancel
                 </button>
-                <button onClick={handleSubmit} disabled={loading || uploadingPhoto} style={btnStyle('white')}>
+                <button type="button" onClick={handleSubmit} disabled={loading || uploadingPhoto} style={btnStyle('white')}>
                   {loading
                     ? <div className="spinner" style={{ width: 14, height: 14, borderWidth: 2, borderColor: 'rgba(37,99,235,0.3)', borderTopColor: '#2563EB' }} />
                     : <Save size={15} />}
@@ -622,8 +541,10 @@ const UserProfile = () => {
               </>
             ) : (
               <>
-                <button onClick={() => setEditMode(true)} style={btnStyle('white')}>Edit Profile</button>
-                <button onClick={() => setShowLogoutConfirm(true)} style={btnStyle('ghost')}>
+                <button type="button" onClick={() => setEditMode(true)} style={btnStyle('white')}>
+                  Edit Profile
+                </button>
+                <button type="button" onClick={() => setShowLogoutConfirm(true)} style={btnStyle('ghost')}>
                   <LogOut size={15} /> Logout
                 </button>
               </>
@@ -638,19 +559,11 @@ const UserProfile = () => {
         )}
       </div>
 
-      {/* ── Alerts ── */}
-      {success && (
-        <div style={alertStyle('success')}>
-          <CheckCircle size={16} /> {success}
-        </div>
-      )}
-      {error && (
-        <div style={alertStyle('error')}>
-          <AlertCircle size={16} /> {error}
-        </div>
-      )}
+      {/* Alerts */}
+      {success && <div style={alertStyle('success')}><CheckCircle size={16} /> {success}</div>}
+      {error   && <div style={alertStyle('error')}><AlertCircle size={16} /> {error}</div>}
 
-      {/* ── Info card ── */}
+      {/* Personal info card */}
       <div style={{ ...cardStyle, padding: isMobile ? '18px 14px' : cardStyle.padding }}>
         <h2 style={sectionTitle}>Personal Information</h2>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 20 }}>
@@ -665,7 +578,7 @@ const UserProfile = () => {
         </div>
       </div>
 
-      {/* ── Password card ── */}
+      {/* Password card */}
       {editMode && (
         <div style={{ ...cardStyle, marginTop: 16, padding: isMobile ? '18px 14px' : cardStyle.padding }}>
           <h2 style={sectionTitle}>
@@ -689,7 +602,7 @@ const UserProfile = () => {
         </div>
       )}
 
-      {/* ── Account info card ── */}
+      {/* Account details card */}
       <div style={{ ...cardStyle, marginTop: 16, padding: isMobile ? '18px 14px' : cardStyle.padding }}>
         <h2 style={sectionTitle}>Account Details</h2>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
@@ -706,45 +619,6 @@ const UserProfile = () => {
           ))}
         </div>
       </div>
-
-      {/* ── Logout confirm modal ── */}
-      {showLogoutConfirm && (
-        <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          zIndex: 2000, padding: 20,
-        }}>
-          <div style={{
-            background: 'white', borderRadius: 16, padding: 28,
-            width: '100%', maxWidth: 360,
-            boxShadow: '0 25px 50px rgba(0,0,0,0.2)',
-          }}>
-            <div style={{ textAlign: 'center', marginBottom: 20 }}>
-              <div style={{
-                width: 52, height: 52, borderRadius: '50%',
-                background: '#FEF3C7', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                margin: '0 auto 14px',
-              }}>
-                <LogOut size={22} color="#F59E0B" />
-              </div>
-              <h3 style={{ fontSize: 18, fontWeight: 700, color: '#0F172A', marginBottom: 6 }}>Confirm Logout</h3>
-              <p style={{ fontSize: 14, color: '#64748B' }}>Are you sure you want to log out of your account?</p>
-            </div>
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button onClick={() => setShowLogoutConfirm(false)} style={{
-                flex: 1, padding: '10px', borderRadius: 8,
-                border: '1px solid #E2E8F0', background: 'white',
-                color: '#475569', fontSize: 14, fontWeight: 600, cursor: 'pointer',
-              }}>Cancel</button>
-              <button onClick={handleLogout} style={{
-                flex: 1, padding: '10px', borderRadius: 8,
-                border: 'none', background: '#EF4444',
-                color: 'white', fontSize: 14, fontWeight: 600, cursor: 'pointer',
-              }}>Logout</button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

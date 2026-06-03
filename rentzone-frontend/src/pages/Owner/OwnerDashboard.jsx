@@ -27,38 +27,17 @@ function StatusBadge({ status }) {
   );
 }
 
-/**
- * Compute the amount shown to the owner — matches what the renter sees:
- *   • Monthly rental  → 1st month rent + security deposit
- *   • Daily rental    → totalAmount (already = nights × rate + deposit)
- *
- * The booking document stores:
- *   totalAmount  = monthlyRent × duration + securityDeposit   (monthly)
- *   totalAmount  = nightlyRate × nights   + securityDeposit   (daily)
- *   monthlyRent  = price per month (stored on the booking)
- *   duration     = number of months / weeks / days
- *
- * So:  securityDeposit = totalAmount − monthlyRent × duration
- *      displayAmount   = monthlyRent + securityDeposit
- */
 function resolveDisplayAmount(booking) {
   if (!booking) return 0;
-
   const total       = Number(booking.totalAmount  || 0);
   const monthlyRent = Number(booking.monthlyRent  || 0);
   const duration    = Number(booking.duration     || 0);
   const isDailyRental = Boolean(booking.isDailyRental);
-
-  // Daily rentals: totalAmount already equals (nights × rate + deposit) — use as-is
   if (isDailyRental) return total;
-
-  // Monthly rentals: back-calculate the security deposit, then return 1st month + deposit
   if (monthlyRent > 0 && duration > 0) {
     const securityDeposit = total - monthlyRent * duration;
     return monthlyRent + securityDeposit;
   }
-
-  // Fallback: can't decompose — return the stored total
   return total;
 }
 
@@ -66,6 +45,7 @@ export default function OwnerDashboard() {
   const { user } = useAuth();
 
   const [stats,           setStats          ] = useState(null);
+  const [pendingCount,    setPendingCount   ] = useState(0);   // ← NEW
   const [bookingRequests, setBookingRequests ] = useState([]);
   const [properties,      setProperties     ] = useState([]);
   const [loading,         setLoading        ] = useState(true);
@@ -84,6 +64,15 @@ export default function OwnerDashboard() {
         const dashboard = dashboardResponse.data?.dashboard || null;
 
         setStats(dashboard);
+
+        // ── Pending count: prefer explicit pendingBookings field,
+        //    fall back to length of the pendingRequests array ──
+        const pending =
+          dashboard?.bookings?.pendingCount ??          // if lambda returns this
+          dashboard?.summary?.pendingBookings ??        // or this
+          (dashboard?.bookings?.pendingRequests?.length ?? 0); // or derive from array
+        setPendingCount(pending);
+
         setBookingRequests(dashboard?.bookings?.pendingRequests || []);
         setProperties(listingsResponse.data?.listings || []);
       } catch (err) {
@@ -101,6 +90,10 @@ export default function OwnerDashboard() {
     try {
       await ownerAPI.updateBooking(bookingId, { action, reason });
       setBookingRequests(prev => prev.filter((b) => String(b._id || b.id) !== String(bookingId)));
+      // ── Decrement pending count when a request is actioned ──
+      if (action === 'accept' || action === 'reject' || action === 'cancel') {
+        setPendingCount(prev => Math.max(0, prev - 1));
+      }
       setStats(prev => {
         if (!prev?.summary) return prev;
         return {
@@ -119,7 +112,6 @@ export default function OwnerDashboard() {
   }, []);
 
   const handleBookingAction = useCallback((booking, action) => {
-    // For actions that need additional confirmation/reason we open modal.
     if (action === 'reject' || action === 'cancel') {
       setConfirmTarget({ booking, action });
       setConfirmReason('');
@@ -145,8 +137,8 @@ export default function OwnerDashboard() {
       bgColor: '#EFF6FF',
     },
     {
-      label: 'Booking Requests',
-      value: stats?.summary?.recentBookings ?? 0,
+      label: 'Pending Requests',          // ← updated label
+      value: pendingCount,                // ← uses dedicated pendingCount state
       icon: Calendar,
       bgColor: '#F0FDFA',
     },
@@ -167,27 +159,25 @@ export default function OwnerDashboard() {
             <p style={{ color: 'var(--text-secondary)' }}>Loading your dashboard…</p>
           </div>
         </div>
-
-          {/* Confirm modal for reject/cancel actions */}
-          {confirmTarget && (
-            <ActionConfirmModal
-              title={confirmTarget.action === 'reject' ? 'Reject Booking Request?' : 'Cancel Booking?'}
-              description={confirmTarget.booking?.propertyName ? `Are you sure you want to ${confirmTarget.action} the booking for "${confirmTarget.booking.propertyName}"?` : `Are you sure you want to ${confirmTarget.action} this booking?`}
-              warningNote={confirmTarget.action === 'reject' ? 'The renter will be notified about the rejection.' : 'The renter will be notified about the cancellation.'}
-              confirmLabel={confirmTarget.action === 'reject' ? 'Reject' : 'Confirm'}
-              confirmColor={confirmTarget.action === 'reject' ? '#EF4444' : '#EF4444'}
-              showReason={confirmTarget.action === 'reject' || confirmTarget.action === 'cancel'}
-              reason={confirmReason}
-              setReason={setConfirmReason}
-              busy={actionBusyId === String(confirmTarget.booking?._id || confirmTarget.booking?.id)}
-              onClose={() => { if (!actionBusyId) { setConfirmTarget(null); setConfirmReason(''); } }}
-              onConfirm={async (r) => {
-                await performBookingAction(confirmTarget.booking, confirmTarget.action, r || '');
-                setConfirmTarget(null);
-                setConfirmReason('');
-              }}
-            />
-          )}
+        {confirmTarget && (
+          <ActionConfirmModal
+            title={confirmTarget.action === 'reject' ? 'Reject Booking Request?' : 'Cancel Booking?'}
+            description={confirmTarget.booking?.propertyName ? `Are you sure you want to ${confirmTarget.action} the booking for "${confirmTarget.booking.propertyName}"?` : `Are you sure you want to ${confirmTarget.action} this booking?`}
+            warningNote={confirmTarget.action === 'reject' ? 'The renter will be notified about the rejection.' : 'The renter will be notified about the cancellation.'}
+            confirmLabel={confirmTarget.action === 'reject' ? 'Reject' : 'Confirm'}
+            confirmColor='#EF4444'
+            showReason={confirmTarget.action === 'reject' || confirmTarget.action === 'cancel'}
+            reason={confirmReason}
+            setReason={setConfirmReason}
+            busy={actionBusyId === String(confirmTarget.booking?._id || confirmTarget.booking?.id)}
+            onClose={() => { if (!actionBusyId) { setConfirmTarget(null); setConfirmReason(''); } }}
+            onConfirm={async (r) => {
+              await performBookingAction(confirmTarget.booking, confirmTarget.action, r || '');
+              setConfirmTarget(null);
+              setConfirmReason('');
+            }}
+          />
+        )}
       </OwnerLayout>
     );
   }
@@ -263,7 +253,6 @@ export default function OwnerDashboard() {
             <tbody>
               {bookingRequests.length > 0 ? bookingRequests.slice(0, 5).map((b, i) => {
                 const displayAmount = resolveDisplayAmount(b);
-
                 return (
                   <tr key={b.id || i} style={{ borderBottom: '1px solid #F1F5F9' }}>
                     <td style={{ padding: 14 }}>
@@ -294,15 +283,11 @@ export default function OwnerDashboard() {
                         {b.checkOutDate ? `To ${new Date(b.checkOutDate).toLocaleDateString()}` : '—'}
                       </div>
                     </td>
-
-                    {/* Duration */}
                     <td style={{ padding: 14, color: 'var(--text-secondary)', fontSize: 14 }}>
                       {b.durationDisplay
                         || (b.duration && b.durationType ? `${b.duration} ${b.durationType}` : null)
                         || (b.nights != null ? `${b.nights} night${b.nights !== 1 ? 's' : ''}` : 'N/A')}
                     </td>
-
-                    {/* Amount — 1st month + security deposit (matches renter view) */}
                     <td style={{ padding: 14, fontWeight: 600, fontSize: 14 }}>
                       <div>Rs {displayAmount.toLocaleString()}</div>
                       {b.monthlyRent && !b.isDailyRental && (
@@ -314,7 +299,6 @@ export default function OwnerDashboard() {
                         1st month + deposit
                       </div>
                     </td>
-
                     <td style={{ padding: 14 }}>
                       <StatusBadge status={b.status || 'pending'} />
                     </td>
@@ -431,26 +415,27 @@ export default function OwnerDashboard() {
           )}
         </div>
       </div>
-        {/* Confirm modal for reject/cancel actions */}
-        {confirmTarget && (
-          <ActionConfirmModal
-            title={confirmTarget.action === 'reject' ? 'Reject Booking Request?' : 'Cancel Booking?'}
-            description={confirmTarget.booking?.propertyName ? `Are you sure you want to ${confirmTarget.action} the booking for "${confirmTarget.booking.propertyName}"?` : `Are you sure you want to ${confirmTarget.action} this booking?`}
-            warningNote={confirmTarget.action === 'reject' ? 'The renter will be notified about the rejection.' : 'The renter will be notified about the cancellation.'}
-            confirmLabel={confirmTarget.action === 'reject' ? 'Reject' : 'Confirm'}
-            confirmColor={confirmTarget.action === 'reject' ? '#EF4444' : '#EF4444'}
-            showReason={confirmTarget.action === 'reject' || confirmTarget.action === 'cancel'}
-            reason={confirmReason}
-            setReason={setConfirmReason}
-            busy={actionBusyId === String(confirmTarget.booking?._id || confirmTarget.booking?.id)}
-            onClose={() => { if (!actionBusyId) { setConfirmTarget(null); setConfirmReason(''); } }}
-            onConfirm={async (r) => {
-              await performBookingAction(confirmTarget.booking, confirmTarget.action, r || '');
-              setConfirmTarget(null);
-              setConfirmReason('');
-            }}
-          />
-        )}
-      </OwnerLayout>
+
+      {/* Confirm modal */}
+      {confirmTarget && (
+        <ActionConfirmModal
+          title={confirmTarget.action === 'reject' ? 'Reject Booking Request?' : 'Cancel Booking?'}
+          description={confirmTarget.booking?.propertyName ? `Are you sure you want to ${confirmTarget.action} the booking for "${confirmTarget.booking.propertyName}"?` : `Are you sure you want to ${confirmTarget.action} this booking?`}
+          warningNote={confirmTarget.action === 'reject' ? 'The renter will be notified about the rejection.' : 'The renter will be notified about the cancellation.'}
+          confirmLabel={confirmTarget.action === 'reject' ? 'Reject' : 'Confirm'}
+          confirmColor='#EF4444'
+          showReason={confirmTarget.action === 'reject' || confirmTarget.action === 'cancel'}
+          reason={confirmReason}
+          setReason={setConfirmReason}
+          busy={actionBusyId === String(confirmTarget.booking?._id || confirmTarget.booking?.id)}
+          onClose={() => { if (!actionBusyId) { setConfirmTarget(null); setConfirmReason(''); } }}
+          onConfirm={async (r) => {
+            await performBookingAction(confirmTarget.booking, confirmTarget.action, r || '');
+            setConfirmTarget(null);
+            setConfirmReason('');
+          }}
+        />
+      )}
+    </OwnerLayout>
   );
 }

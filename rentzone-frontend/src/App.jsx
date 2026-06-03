@@ -26,6 +26,8 @@ import OwnerMessages    from './pages/Owner/OwnerMessages';
 import UserProfile      from './components/common/UserProfile';
 import OwnerBookings    from './pages/Owner/OwnerBookings';
 import Notifications    from './components/common/Notifications';
+import ForgotPassword   from './components/auth/ForgotPassword';
+import ResetPassword    from './components/auth/ResetPassword';
 
 import './index.css';
 
@@ -60,6 +62,8 @@ function AppRoutes() {
       <Route path="/login"    element={<PublicRoute><Login /></PublicRoute>} />
       <Route path="/register" element={<PublicRoute><Register /></PublicRoute>} />
       <Route path="/verify-email" element={<VerifyEmail />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
 
       {/* ── Renter ── */}
       <Route path="/renter/dashboard"
