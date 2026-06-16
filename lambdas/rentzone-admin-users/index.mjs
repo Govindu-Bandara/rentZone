@@ -45,6 +45,18 @@ async function logSystemActivity(db, level, category, message, userEmail, ipAddr
   }
 }
 
+/**
+ * Derives isLocked from DB fields.
+ * A user is locked if they have >= 5 failed attempts AND the lock hasn't expired yet.
+ * If lockExpiresAt is missing but attempts >= 5, treat as locked (legacy data).
+ */
+function deriveIsLocked(user) {
+  const MAX_ATTEMPTS = 5;
+  if ((user.loginAttempts || 0) < MAX_ATTEMPTS) return false;
+  if (!user.lockExpiresAt) return true; // legacy: attempts hit limit but no expiry stored
+  return new Date(user.lockExpiresAt) > new Date();
+}
+
 export const handler = async (event) => {
   const headers = {
     'Content-Type': 'application/json',
@@ -89,6 +101,18 @@ export const handler = async (event) => {
       if (params.verified === 'true') query.isVerified = true;
       else if (params.verified === 'false') query.isVerified = false;
 
+      // ── FIX: locked filter ───────────────────────────────────────────────
+      if (params.locked === 'true') {
+        const now = new Date();
+        // Users with >= 5 attempts where lockout hasn't expired
+        query.loginAttempts = { $gte: 5 };
+        query.$or = [
+          { lockExpiresAt: { $gt: now } },        // still within lockout window
+          { lockExpiresAt: { $exists: false } },   // legacy docs with no expiry field
+          { lockExpiresAt: null },                  // explicitly null but attempts hit limit
+        ];
+      }
+
       const page = parseInt(params.page) || 1;
       const limit = parseInt(params.limit) || 20;
       const skip = (page - 1) * limit;
@@ -98,7 +122,6 @@ export const handler = async (event) => {
       if (params.sortBy === 'email') sort = { email: 1 };
       if (params.sortBy === 'joined') sort = { createdAt: -1 };
 
-      // Project out sensitive fields but keep nicDetails for admin
       const users = await usersCollection.find(query)
         .sort(sort).skip(skip).limit(limit)
         .project({ password: 0, 'emailVerification.otp': 0 })
@@ -130,13 +153,20 @@ export const handler = async (event) => {
           totalRevenue = revenueAgg[0]?.total || 0;
         }
 
+        // ── FIX: compute isLocked server-side so frontend can rely on it ──
+        const isLocked = deriveIsLocked(user);
+
         return {
           ...user,
           properties,
           bookings,
           totalRevenue,
           status: user.isSuspended ? 'Suspended' : (user.isActive ? 'Active' : 'Inactive'),
-          // Include NIC details for admin view (owners only)
+          // ── FIX: always return these lock fields ──────────────────────
+          isLocked,
+          loginAttempts: user.loginAttempts || 0,
+          lockExpiresAt: user.lockExpiresAt || null,
+          lastFailedLogin: user.lastFailedLogin || null,
           nicDetails: user.role === 'owner' ? user.nicDetails || null : undefined,
           emailVerificationStatus: user.emailVerification?.verified ? 'verified' : 'pending'
         };
@@ -151,13 +181,29 @@ export const handler = async (event) => {
       const suspendedUsers = await usersCollection.countDocuments({ ...userQuery, isSuspended: true });
       const verifiedUsers = await usersCollection.countDocuments({ ...userQuery, isVerified: true });
 
+      // ── FIX: also return total locked count so dashboard stat is accurate
+      const now = new Date();
+      const lockedUsers = await usersCollection.countDocuments({
+        role: { $ne: 'admin' },
+        loginAttempts: { $gte: 5 },
+        $or: [
+          { lockExpiresAt: { $gt: now } },
+          { lockExpiresAt: { $exists: false } },
+          { lockExpiresAt: null },
+        ],
+      });
+
       return {
         statusCode: 200,
         headers,
         body: JSON.stringify({
           message: 'Users retrieved successfully',
           users: enrichedUsers,
-          summary: { total: totalUsers, active: activeUsers, owners: totalOwners, renters: totalRenters, suspended: suspendedUsers, verified: verifiedUsers },
+          summary: {
+            total: totalUsers, active: activeUsers, owners: totalOwners,
+            renters: totalRenters, suspended: suspendedUsers, verified: verifiedUsers,
+            locked: lockedUsers, // ← new field
+          },
           pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
         })
       };
@@ -172,7 +218,9 @@ export const handler = async (event) => {
 
       const body = JSON.parse(event.body);
       const { action, reason, role } = body;
-      const validActions = ['suspend', 'activate', 'change_role', 'verify', 'verify_identity'];
+
+      // ── FIX: reset_lockout added to valid actions ─────────────────────
+      const validActions = ['suspend', 'activate', 'change_role', 'verify', 'verify_identity', 'reset_lockout'];
       if (!validActions.includes(action)) {
         return { statusCode: 400, headers, body: JSON.stringify({ error: `Invalid action. Must be one of: ${validActions.join(', ')}` }) };
       }
@@ -224,7 +272,6 @@ export const handler = async (event) => {
           break;
 
         case 'verify_identity':
-          // Admin verified NIC/identity of an owner
           updateFields.isAdminVerified = true;
           updateFields.adminVerifiedAt = new Date();
           updateFields.adminVerifiedBy = new ObjectId(decoded.userId);
@@ -233,12 +280,21 @@ export const handler = async (event) => {
           message = `Owner ${user.email} identity has been verified`;
           await logSystemActivity(db, 'INFO', 'Admin', `Owner identity verified: ${user.email}`, decoded.email, ipAddress, { userId });
           break;
+
+        // ── FIX: reset_lockout case ──────────────────────────────────────
+        case 'reset_lockout':
+          updateFields.loginAttempts = 0;
+          updateFields.lockExpiresAt = null;
+          updateFields.lastFailedLogin = null;
+          message = `Account lockout cleared for ${user.email}`;
+          await logSystemActivity(db, 'INFO', 'Admin', `Account lockout reset by admin: ${user.email}`, decoded.email, ipAddress, { userId });
+          break;
       }
 
       const auditEntry = {
         action, performedBy: decoded.userId, performedByEmail: decoded.email,
         reason: reason || 'No reason provided', timestamp: new Date(),
-        previousValues: { isActive: user.isActive, isSuspended: user.isSuspended, role: user.role, isVerified: user.isVerified }
+        previousValues: { isActive: user.isActive, isSuspended: user.isSuspended, role: user.role, isVerified: user.isVerified, loginAttempts: user.loginAttempts }
       };
 
       const result = await usersCollection.findOneAndUpdate(
@@ -247,7 +303,10 @@ export const handler = async (event) => {
         { returnDocument: 'after', projection: { password: 0, 'emailVerification.otp': 0 } }
       );
 
-      return { statusCode: 200, headers, body: JSON.stringify({ message, user: result, action }) };
+      // Return updated doc with derived isLocked so frontend stays in sync
+      const updatedUser = result ? { ...result, isLocked: deriveIsLocked(result) } : null;
+
+      return { statusCode: 200, headers, body: JSON.stringify({ message, user: updatedUser, action }) };
     }
 
     // ── DELETE /admin/users/:id ───────────────────────────────────────────
