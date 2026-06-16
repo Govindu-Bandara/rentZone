@@ -25,6 +25,16 @@ jobs:
           npm run build
         env:
           VITE_API_URL: ${{ secrets.VITE_API_URL }}
+          VITE_WS_URL: ${{ secrets.VITE_WS_URL }}
+          VITE_ENABLE_WEBSOCKET: ${{ secrets.VITE_ENABLE_WEBSOCKET }}
+          VITE_APP_ENV: ${{ secrets.VITE_APP_ENV }}
+          VITE_APP_NAME: ${{ secrets.VITE_APP_NAME }}
+          VITE_ENABLE_NOTIFICATIONS: "true"
+          VITE_ENABLE_RECOMMENDATIONS: "true"
+          VITE_ACCESS_TOKEN_EXPIRY: "3600"
+          VITE_REFRESH_TOKEN_EXPIRY: "604800"
+          VITE_DEFAULT_PAGE_SIZE: "12"
+          VITE_MAX_FILE_SIZE: "5242880"
 
       - name: Setup SSH key
         run: |
