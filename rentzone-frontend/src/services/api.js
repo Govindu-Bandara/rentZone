@@ -7,7 +7,7 @@ import { clearAuthStorage, getStoredRefreshToken } from '../utils/auth';
 // in `vite.config.js`.
 const API_BASE_URL = import.meta.env.DEV
   ? (import.meta.env.VITE_API_PROXY_PATH || '/production')
-  : (import.meta.env.VITE_API_BASE_URL || 'https://z99qed07b8.execute-api.ap-southeast-2.amazonaws.com/production');
+  : (import.meta.env.VITE_API_URL || 'https://z99qed07b8.execute-api.ap-southeast-2.amazonaws.com/production');
 
 console.log('API Base URL:', API_BASE_URL, 'DEV=', import.meta.env.DEV);
 
