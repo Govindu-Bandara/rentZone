@@ -1,10 +1,3 @@
-/**
- * searchParser.js
- * Natural language query parser for Rent Zone search.
- * Converts free-text like "annex near university of colombo"
- * into structured API parameters.
- */
-
 const PROPERTY_SYNONYMS = {
   // Boarding / Annex
   'annex':          'Boarding Place',

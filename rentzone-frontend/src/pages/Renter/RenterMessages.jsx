@@ -1,14 +1,3 @@
-/**
- * RenterMessages.jsx
- * Real-time messaging inbox for renters.
- *
- * Fixes applied:
- *  - sendWS returning false triggers immediate REST fallback for all actions
- *  - location.state cleared after first read to prevent re-trigger on refresh
- *  - activeConvId set for pendingRecipient so ws_poll / ws_connected work
- *  - Deduplication on newMessage by _id
- */
-
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';

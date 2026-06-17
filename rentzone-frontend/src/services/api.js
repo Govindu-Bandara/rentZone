@@ -1,10 +1,6 @@
 import axios from 'axios';
 import { clearAuthStorage, getStoredRefreshToken } from '../utils/auth';
 
-// During local development we route API calls through the Vite dev server proxy
-// so the browser sees same-origin responses and avoids CORS issues.
-// The proxy maps the `/production` path to the API Gateway target configured
-// in `vite.config.js`.
 const API_BASE_URL = import.meta.env.DEV
   ? (import.meta.env.VITE_API_PROXY_PATH || '/production')
   : (import.meta.env.VITE_API_URL || 'https://z99qed07b8.execute-api.ap-southeast-2.amazonaws.com/production');
@@ -13,19 +9,14 @@ console.log('API Base URL:', API_BASE_URL, 'DEV=', import.meta.env.DEV);
 
 const api = axios.create({
   baseURL: API_BASE_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
+  headers: { 'Content-Type': 'application/json' },
   timeout: 10000,
 });
 
-// ── Token-refresh state ──────────────────────────────────────────────────────
-// A plain axios instance used ONLY for the /auth/refresh call so it never
-// triggers the interceptor below (which would cause infinite loops).
+// Plain client used ONLY for token refresh — never triggers the response interceptor below.
 const refreshClient = axios.create({ baseURL: API_BASE_URL, timeout: 10000 });
 
 let isRefreshing = false;
-// Queue of { resolve, reject } for requests that arrived while a refresh is in flight
 let pendingQueue = [];
 
 function processQueue(error, token) {
@@ -35,19 +26,15 @@ function processQueue(error, token) {
 
 function forceLogout() {
   clearAuthStorage();
-  // Notify AuthContext (if mounted) and let it redirect
   window.dispatchEvent(new Event('auth:logout'));
 }
-// ────────────────────────────────────────────────────────────────────────────
 
-// Request interceptor
+// ── Request interceptor ────────────────────────────────────────────────────
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('accessToken');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    console.log('API Request:', config.method.toUpperCase(), config.url);
+    const token = localStorage.getItem('accessToken') || localStorage.getItem('rz_token');
+    if (token) config.headers.Authorization = `Bearer ${token}`;
+    console.log('API Request:', config.method?.toUpperCase(), config.url);
     return config;
   },
   (error) => {
@@ -56,7 +43,7 @@ api.interceptors.request.use(
   }
 );
 
-// Response interceptor
+// ── Response interceptor ───────────────────────────────────────────────────
 api.interceptors.response.use(
   (response) => {
     console.log('API Response:', response.config.url, response.status);
@@ -64,32 +51,18 @@ api.interceptors.response.use(
   },
   async (error) => {
     const originalRequest = error.config;
-
     console.error('API Error:', error.response?.status, error.response?.data || error.message);
 
-    // ── Handle expired access token ──────────────────────────────────────────
     if (error.response?.status === 401 && !originalRequest._retry) {
       const refreshToken = getStoredRefreshToken();
+      if (!refreshToken) { forceLogout(); return Promise.reject(error); }
 
-      // No refresh token available — force logout immediately
-      if (!refreshToken) {
-        forceLogout();
-        return Promise.reject(error);
-      }
-
-      // Another request is already refreshing — queue this one
       if (isRefreshing) {
-        return new Promise((resolve, reject) => {
-          pendingQueue.push({ resolve, reject });
-        })
-          .then((newToken) => {
-            originalRequest.headers.Authorization = `Bearer ${newToken}`;
-            return api(originalRequest);
-          })
+        return new Promise((resolve, reject) => { pendingQueue.push({ resolve, reject }); })
+          .then((newToken) => { originalRequest.headers.Authorization = `Bearer ${newToken}`; return api(originalRequest); })
           .catch((err) => Promise.reject(err));
       }
 
-      // This request will drive the refresh
       originalRequest._retry = true;
       isRefreshing = true;
 
@@ -97,7 +70,6 @@ api.interceptors.response.use(
         const { data } = await refreshClient.post('/auth/refresh', { refreshToken });
         const { accessToken: newToken, refreshToken: newRefresh } = data;
 
-        // Persist updated tokens
         localStorage.setItem('rz_token', newToken);
         localStorage.setItem('accessToken', newToken);
         if (newRefresh) {
@@ -105,9 +77,7 @@ api.interceptors.response.use(
           localStorage.setItem('refreshToken', newRefresh);
         }
 
-        // Update default header for future requests
         api.defaults.headers.common.Authorization = `Bearer ${newToken}`;
-
         processQueue(null, newToken);
         originalRequest.headers.Authorization = `Bearer ${newToken}`;
         return api(originalRequest);
@@ -119,7 +89,6 @@ api.interceptors.response.use(
         isRefreshing = false;
       }
     }
-    // ────────────────────────────────────────────────────────────────────────
 
     const errorMessage =
       error.response?.data?.message ||
@@ -137,15 +106,15 @@ api.interceptors.response.use(
 
 // ==================== AUTH API ====================
 export const authAPI = {
-  login: (credentials) => api.post('/auth/login', credentials),
-  register: (userData) => api.post('/auth/register', userData),
-  registerAdmin: (userData) => api.post('/auth/admin/register', userData),
-  logout: () => api.post('/auth/logout'),
-  refreshToken: (rt) => api.post('/auth/refresh', { refreshToken: rt }),
-  verifyEmail: (data) => api.post('/auth/verify-email', data),
-  resendOTP: (data) => api.post('/auth/resend-otp', data),
-  forgotPassword: (email) => api.post('/auth/forgot-password', { email }),
-  resetPassword: (token, email, newPassword) =>
+  login:         (credentials) => api.post('/auth/login', credentials),
+  register:      (userData)    => api.post('/auth/register', userData),
+  registerAdmin: (userData)    => api.post('/auth/admin/register', userData),
+  logout:        ()            => api.post('/auth/logout'),
+  refreshToken:  (rt)          => api.post('/auth/refresh', { refreshToken: rt }),
+  verifyEmail:   (data)        => api.post('/auth/verify-email', data),
+  resendOTP:     (data)        => api.post('/auth/resend-otp', data),
+  forgotPassword: (email)      => api.post('/auth/forgot-password', { email }),
+  resetPassword:  (token, email, newPassword) =>
     api.post('/auth/reset-password', { token, email, newPassword }),
 };
 
@@ -162,39 +131,32 @@ export const landingAPI = {
 
 // ==================== PROPERTY API ====================
 export const propertyAPI = {
-  // Public endpoint — no auth required (used on Landing page)
-  getPublicProperties: (params) => api.get('/public/houses', { params }),
-
-  // Authenticated endpoints
-  getProperties:    (params)     => api.get('/house', { params }),
-  getProperty:      (id)         => api.get(`/house/${id}`),
-  createProperty:   (data)       => api.post('/house', data),
-  updateProperty:   (id, data)   => api.put(`/house/${id}`, data),
-  deleteProperty:   (id)         => api.delete(`/house/${id}`),
-  searchProperties: (params)     => api.get('/house', { params }),
-
-  // Owner-specific
-  getOwnerListings: (params)     => api.get('/owner/listings', { params }),
+  getPublicProperties: (params)   => api.get('/public/houses', { params }),
+  getProperties:       (params)   => api.get('/house', { params }),
+  getProperty:         (id)       => api.get(`/house/${id}`),
+  createProperty:      (data)     => api.post('/house', data),
+  updateProperty:      (id, data) => api.put(`/house/${id}`, data),
+  deleteProperty:      (id)       => api.delete(`/house/${id}`),
+  searchProperties:    (params)   => api.get('/house', { params }),
+  getOwnerListings:    (params)   => api.get('/owner/listings', { params }),
 };
 
 // ==================== UPLOAD API ====================
 export const uploadAPI = {
-  getUploadUrl: (fileName, fileType) => api.post('/get-upload-url', { fileName, fileType }),
+  getUploadUrl: (fileName, fileType) =>
+    api.post('/get-upload-url', { fileName, fileType }),
   getNicUploadUrl: (fileName, fileType, uploadType, sessionId) =>
     api.post('/get-upload-url', { fileName, fileType, uploadType, sessionId }),
 };
 
 // ==================== BOOKING API ====================
 export const bookingAPI = {
-  // Renter
   createBookingRequest: (data)     => api.post('/bookings/request', data),
   getRenterBookings:    (params)   => api.get('/renter/bookings', { params }),
   updateRenterBooking:  (id, data) => api.put(`/renter/bookings/${id}`, data),
   getRenterBookingById: (id)       => api.get('/renter/bookings', { params: { bookingId: id, limit: 1 } }),
-
-  // Owner
-  getOwnerBookings:  (params)   => api.get('/owner/bookings', { params }),
-  updateOwnerBooking:(id, data) => api.put(`/owner/bookings/${id}`, data),
+  getOwnerBookings:     (params)   => api.get('/owner/bookings', { params }),
+  updateOwnerBooking:   (id, data) => api.put(`/owner/bookings/${id}`, data),
 };
 
 // ==================== PAYMENT API ====================
@@ -205,11 +167,12 @@ export const paymentAPI = {
 
 // ==================== FAVORITES API ====================
 export const favoriteAPI = {
-  getFavorites:  (params)  => api.get('/favourites', { params }),
-  addFavorite:   (houseId) => api.post('/favourites', { houseId }),
-  removeFavorite:(houseId) => api.delete(`/favourites/${houseId}`),
+  getFavorites:   (params)  => api.get('/favourites', { params }),
+  addFavorite:    (houseId) => api.post('/favourites', { houseId }),
+  removeFavorite: (houseId) => api.delete(`/favourites/${houseId}`),
 };
 
+// Alias for components that import favoritesAPI (plural)
 export const favoritesAPI = {
   getAll:  (params)  => api.get('/favourites', { params }),
   add:     (houseId) => api.post('/favourites', { houseId }),
@@ -218,11 +181,10 @@ export const favoritesAPI = {
 
 // ==================== MESSAGE API ====================
 export const messageAPI = {
-  getConversations: () => api.get('/messages'),
-  getMessages: (conversationId) =>
-    api.get('/messages', { params: { conversationId } }),
-  sendMessage: (payload) => api.post('/sendMessage', payload),
-  markAsRead: (payload) => api.put('/messages/read', payload),
+  getConversations: ()               => api.get('/messages'),
+  getMessages:      (conversationId) => api.get('/messages', { params: { conversationId } }),
+  sendMessage:      (payload)        => api.post('/sendMessage', payload),
+  markAsRead:       (payload)        => api.put('/messages/read', payload),
 };
 
 // ==================== NOTIFICATION API ====================
@@ -243,19 +205,19 @@ export const ownerAPI = {
 
 // ==================== RENTER API ====================
 export const renterAPI = {
-  getDashboard:       ()         => api.get('/renter/dashboard'),
-  getBookings:        (params)   => api.get('/renter/bookings', { params }),
+  getDashboard:       ()       => api.get('/renter/dashboard'),
+  getBookings:        (params) => api.get('/renter/bookings', { params }),
   updateBooking:      (id, data) => api.put(`/renter/bookings/${id}`, data),
-  getRecommendations: (params)   => api.get('/recommendations', { params }),
-  getRecentlyViewed:  (params)   => api.get('/recently-viewed', { params }),
-  getSaved:           (params)   => api.get('/favourites', { params }),
+  getRecommendations: (params) => api.get('/recommendations', { params }),
+  getRecentlyViewed:  (params) => api.get('/recently-viewed', { params }),
+  getSaved:           (params) => api.get('/favourites', { params }),
 };
 
 // ==================== ADMIN API ====================
 export const adminAPI = {
   getDashboard: () => api.get('/admin/dashboard'),
 
-  // Users
+  // Users — params can include { locked: 'true' } to filter locked accounts
   getUsers:      (params)   => api.get('/admin/users', { params }),
   getUserDetail: (id)       => api.get(`/admin/users/${id}`),
   updateUser:    (id, data) => api.put(`/admin/users/${id}`, data),
@@ -265,12 +227,12 @@ export const adminAPI = {
   getVerificationQueue: (params)   => api.get('/admin/verify-listings', { params }),
   verifyListing:        (id, data) => api.put(`/admin/verify-listings/${id}`, data),
 
-  // Fraud
+  // Fraud monitoring
   getFraudMonitoring: (params)   => api.get('/admin/fraud', { params }),
   resolveFraudCase:   (id, data) => api.put(`/admin/fraud/${id}`, data),
   runFraudScan:       (data)     => api.post('/admin/fraud', data),
 
-  // Logs
+  // System logs
   getSystemLogs: (params) => api.get('/admin/logs', { params }),
   createLog:     (data)   => api.post('/admin/logs', data),
 };

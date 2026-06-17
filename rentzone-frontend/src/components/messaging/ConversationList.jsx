@@ -1,9 +1,3 @@
-/**
- * ConversationList.jsx
- * Left-panel sidebar showing all conversations sorted by latest message.
- * Shared between RenterMessages and OwnerMessages.
- */
-
 import { useEffect, useMemo, useState } from 'react';
 
 function formatTime(dateStr) {

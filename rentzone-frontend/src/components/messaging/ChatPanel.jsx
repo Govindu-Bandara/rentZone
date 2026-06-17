@@ -1,10 +1,3 @@
-/**
- * ChatPanel.jsx
- * The main chat window: message bubbles, timestamp grouping, delivery/read ticks,
- * typing indicator, and message input with emoji + attachment stubs.
- * Shared between RenterMessages and OwnerMessages.
- */
-
 import { useState, useEffect, useRef, useCallback } from 'react';
 
 /* ── helpers ── */
