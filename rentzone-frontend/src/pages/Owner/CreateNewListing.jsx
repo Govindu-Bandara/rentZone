@@ -9,6 +9,7 @@ import toast from 'react-hot-toast';
 export default function CreateNewListing() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const [markerPosition, setMarkerPosition] = useState([7.8731, 80.7718]); // Sri Lanka center default
 
   const [formData, setFormData] = useState({
@@ -63,23 +64,92 @@ export default function CreateNewListing() {
     }));
   };
 
-  const handleImageUpload = (e) => {
-    const files = Array.from(e.target.files);
-    if (files.length + formData.images.length > 10) {
+  // Shared logic for adding image files, used by both the file input
+  // and drag-and-drop. Filters out non-images and oversized files,
+  // and enforces the 10-image cap.
+  const addImageFiles = (fileList) => {
+    const files = Array.from(fileList || []);
+    if (files.length === 0) return;
+
+    // Only allow actual image files (covers drag-and-drop from sources
+    // that might include non-image files alongside images)
+    const imageOnly = files.filter(file => file.type.startsWith('image/'));
+    if (imageOnly.length !== files.length) {
+      toast.error('Only image files are allowed');
+    }
+
+    if (imageOnly.length === 0) return;
+
+    if (imageOnly.length + formData.images.length > 10) {
       toast.error('Maximum 10 images allowed');
       return;
     }
 
-    const validFiles = files.filter(file => {
+    const validFiles = imageOnly.filter(file => {
       const isValidType = file.type === 'image/png' || file.type === 'image/jpeg' || file.type === 'image/jpg';
       const isValidSize = file.size <= 10 * 1024 * 1024; // 10MB
       return isValidType && isValidSize;
     });
 
+    if (validFiles.length !== imageOnly.length) {
+      toast.error('Some files were skipped — only PNG/JPG up to 10MB are allowed');
+    }
+
+    if (validFiles.length === 0) return;
+
     setFormData(prev => ({
       ...prev,
       images: [...prev.images, ...validFiles]
     }));
+  };
+
+  const handleImageUpload = (e) => {
+    addImageFiles(e.target.files);
+    // Reset the input so the same file can be re-selected later if removed
+    e.target.value = '';
+  };
+
+  const removeImage = (idxToRemove) => {
+    setFormData(prev => {
+      const nextImages = prev.images.filter((_, i) => i !== idxToRemove);
+      let nextMainIndex = prev.mainImageIndex;
+      if (nextMainIndex === idxToRemove) {
+        // The cover photo was removed — fall back to the first remaining image, if any
+        nextMainIndex = nextImages.length > 0 ? 0 : null;
+      } else if (nextMainIndex !== null && nextMainIndex > idxToRemove) {
+        nextMainIndex = nextMainIndex - 1;
+      }
+      return { ...prev, images: nextImages, mainImageIndex: nextMainIndex };
+    });
+  };
+
+  const handleDragEnter = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragOver = (e) => {
+    // Required to allow dropping — browsers block drop by default
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Only clear dragging state when leaving the drop zone itself,
+    // not when moving between its children
+    if (e.currentTarget.contains(e.relatedTarget)) return;
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    addImageFiles(e.dataTransfer.files);
   };
 
   const validateForm = () => {
@@ -575,12 +645,16 @@ export default function CreateNewListing() {
           </h2>
 
           <div
+            onDragEnter={handleDragEnter}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
             style={{
-              border: '2px dashed #CBD5E1',
+              border: `2px dashed ${isDragging ? '#14B8A6' : '#CBD5E1'}`,
               borderRadius: 12,
               padding: 56,
               textAlign: 'center',
-              background: '#F8FAFC',
+              background: isDragging ? '#F0FDFA' : '#F8FAFC',
               cursor: 'pointer',
               transition: 'all 0.2s'
             }}
@@ -594,14 +668,15 @@ export default function CreateNewListing() {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              margin: '0 auto 20px'
+              margin: '0 auto 20px',
+              pointerEvents: 'none'
             }}>
               <Upload size={32} color="#fff" />
             </div>
-            <p style={{ fontSize: 15, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 8 }}>
-              Drag images here or click to upload
+            <p style={{ fontSize: 15, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 8, pointerEvents: 'none' }}>
+              {isDragging ? 'Drop images here' : 'Drag images here or click to upload'}
             </p>
-            <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+            <p style={{ fontSize: 13, color: 'var(--text-secondary)', pointerEvents: 'none' }}>
               PNG, JPG up to 10MB each (Max 10 images)
             </p>
             <input
@@ -665,6 +740,25 @@ export default function CreateNewListing() {
                         </span>
                       </div>
                     )}
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); removeImage(idx); }}
+                      style={{
+                        position: 'absolute',
+                        top: 8,
+                        right: 8,
+                        background: '#EF4444',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: 6,
+                        padding: '4px 8px',
+                        cursor: 'pointer',
+                        fontSize: 12,
+                        zIndex: 10,
+                      }}
+                    >
+                      Remove
+                    </button>
                   </div>
                 ))}
               </div>

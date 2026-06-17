@@ -39,6 +39,7 @@ export default function EditListing() {
 
   const [loading, setLoading] = useState(false);
   const [loadingListing, setLoadingListing] = useState(true);
+  const [isDragging, setIsDragging] = useState(false);
   const [markerPosition, setMarkerPosition] = useState(DEFAULT_POSITION);
   const [formData, setFormData] = useState(INITIAL_FORM);
   const [existingImages, setExistingImages] = useState([]);
@@ -54,7 +55,6 @@ export default function EditListing() {
       ? listing.images.map((img) => ({ url: getImageUrl(img), key: getImageKey(img) })).filter((img) => Boolean(img.url))
       : [];
 
-    // Determine which existing image is the main/cover image
     const selectedMainUrl = getImageUrl(listing.mainImage);
     const mainIdx = normalizedExisting.findIndex((img) => img.url === selectedMainUrl);
     const resolvedMainIdx = mainIdx >= 0 ? mainIdx : (normalizedExisting.length > 0 ? 0 : null);
@@ -115,22 +115,65 @@ export default function EditListing() {
     setFormData(prev => ({ ...prev, amenities: { ...prev.amenities, [amenity]: !prev.amenities[amenity] } }));
   };
 
-  const handleImageUpload = (e) => {
-    const files = Array.from(e.target.files || []);
+  // Shared logic for adding image files, used by both the file input
+  // and drag-and-drop. Filters out non-images and oversized files,
+  // and enforces the 10-image cap (existing + new combined).
+  const addImageFiles = (fileList) => {
+    const files = Array.from(fileList || []);
+    if (files.length === 0) return;
+
+    const imageOnly = files.filter(f => f.type.startsWith('image/'));
+    if (imageOnly.length !== files.length) {
+      toast.error('Only image files are allowed');
+    }
+    if (imageOnly.length === 0) return;
+
     const currentTotal = existingImages.length + formData.images.length;
-    if (files.length + currentTotal > 10) { toast.error('Maximum 10 images allowed'); return; }
-    const validFiles = files.filter(f => {
+    if (imageOnly.length + currentTotal > 10) {
+      toast.error('Maximum 10 images allowed');
+      return;
+    }
+
+    const validFiles = imageOnly.filter(f => {
       const ok = (f.type === 'image/png' || f.type === 'image/jpeg' || f.type === 'image/jpg') && f.size <= 10 * 1024 * 1024;
       return ok;
     });
-    if (validFiles.length !== files.length) toast.error('Some files skipped — only PNG/JPG up to 10MB allowed.');
+    if (validFiles.length !== imageOnly.length) toast.error('Some files skipped — only PNG/JPG up to 10MB allowed.');
+    if (validFiles.length === 0) return;
+
     setFormData(prev => ({ ...prev, images: [...prev.images, ...validFiles] }));
   };
 
-  // ── Index scheme ──────────────────────────────────────────────────────────
-  // Existing images: index 0 .. existingImages.length - 1
-  // New images:      index existingImages.length .. existingImages.length + formData.images.length - 1
-  // mainImageIndex stores a value from this unified space.
+  const handleImageUpload = (e) => {
+    addImageFiles(e.target.files);
+    e.target.value = '';
+  };
+
+  const handleDragEnter = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.currentTarget.contains(e.relatedTarget)) return;
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    addImageFiles(e.dataTransfer.files);
+  };
 
   const removeExistingImage = (idxToRemove) => {
     setExistingImages(prev => prev.filter((_, i) => i !== idxToRemove));
@@ -429,13 +472,27 @@ export default function EditListing() {
           </h2>
 
           <div
-            style={{ border: '2px dashed #CBD5E1', borderRadius: 12, padding: 56, textAlign: 'center', background: '#F8FAFC', cursor: 'pointer' }}
+            onDragEnter={handleDragEnter}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            style={{
+              border: `2px dashed ${isDragging ? '#14B8A6' : '#CBD5E1'}`,
+              borderRadius: 12,
+              padding: 56,
+              textAlign: 'center',
+              background: isDragging ? '#F0FDFA' : '#F8FAFC',
+              cursor: 'pointer',
+              transition: 'all 0.2s'
+            }}
             onClick={() => document.getElementById('edit-image-upload').click()}>
-            <div style={{ width: 72, height: 72, borderRadius: '50%', background: '#14B8A6', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
+            <div style={{ width: 72, height: 72, borderRadius: '50%', background: '#14B8A6', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px', pointerEvents: 'none' }}>
               <Upload size={32} color="#fff" />
             </div>
-            <p style={{ fontSize: 15, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 8 }}>Add more images or replace old ones</p>
-            <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>PNG, JPG up to 10MB each (Max 10 images)</p>
+            <p style={{ fontSize: 15, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 8, pointerEvents: 'none' }}>
+              {isDragging ? 'Drop images here' : 'Add more images or replace old ones'}
+            </p>
+            <p style={{ fontSize: 13, color: 'var(--text-secondary)', pointerEvents: 'none' }}>PNG, JPG up to 10MB each (Max 10 images)</p>
             <input id="edit-image-upload" type="file" accept="image/png,image/jpeg,image/jpg" multiple onChange={handleImageUpload} style={{ display: 'none' }} />
           </div>
 
@@ -448,7 +505,6 @@ export default function EditListing() {
               </h3>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 16 }}>
                 {existingImages.map((img, idx) => {
-                  // ✅ FIXED: existing images use idx directly (0-based within existing array)
                   const isCover = formData.mainImageIndex === idx;
                   return (
                     <div key={`existing-${idx}`}
@@ -480,7 +536,6 @@ export default function EditListing() {
               </h3>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 16 }}>
                 {formData.images.map((img, idx) => {
-                  // ✅ New images offset by existingImages.length
                   const globalIdx = existingImages.length + idx;
                   const isCover = formData.mainImageIndex === globalIdx;
                   return (
